@@ -1,5 +1,6 @@
 import "./style.css";
-import { LAYERS, LAYER_NAMES, clampSize, createDocument, deserialize, serialize } from "./document";
+import { LAYERS, LAYER_NAMES, clampSize, createDocument, parseDocument, serialize, type DomainDocument } from "./document";
+import { primaryId } from "./brush";
 import { TOOLS, TOOL_INFO, Editor } from "./editor";
 import { clear, h } from "./dom";
 import { loadPalette, type Palette } from "./palette";
@@ -7,6 +8,8 @@ import { buildPalettePanel, buildSidebar, buildTopBar } from "./ui";
 import { MapView, isTyping } from "./view";
 
 const AUTOSAVE_KEY = "qlippoth-domain-builder.autosave";
+/** An autosave that could not be read is moved here instead of being overwritten by the next autosave. */
+const UNREADABLE_AUTOSAVE_KEY = "qlippoth-domain-builder.autosave.unreadable";
 const app = document.getElementById("app")!;
 
 // Browser storage can be missing or throw (private mode, blocked site data); the editor works without it.
@@ -18,24 +21,30 @@ function readAutosave(): string | null {
   }
 }
 
-function writeAutosave(text: string): void {
+function writeAutosave(text: string, key = AUTOSAVE_KEY): void {
   try {
-    localStorage.setItem(AUTOSAVE_KEY, text);
+    localStorage.setItem(key, text);
   } catch {
     // Ignored: autosave is a convenience only.
   }
 }
 
-function initialDocument() {
+/** The autosaved document, or a new one. `notice` explains anything that went wrong while restoring. */
+function initialDocument(): { doc: DomainDocument; notice: string | null } {
   const saved = readAutosave();
   if (saved) {
     try {
-      return deserialize(saved);
-    } catch {
-      // Corrupt or outdated autosave: start fresh.
+      const { document, problems } = parseDocument(saved);
+      return { doc: document, notice: problems.length ? `Some of the autosaved domain could not be restored:\n\n${problems.join("\n")}` : null };
+    } catch (error) {
+      writeAutosave(saved, UNREADABLE_AUTOSAVE_KEY);
+      return {
+        doc: createDocument("Untitled domain", 20, 15),
+        notice: `The autosaved domain could not be opened (${(error as Error).message}) and a new one was started. The old autosave is kept in this browser's storage under "${UNREADABLE_AUTOSAVE_KEY}".`,
+      };
     }
   }
-  return createDocument("Untitled domain", 20, 15);
+  return { doc: createDocument("Untitled domain", 20, 15), notice: null };
 }
 
 function fileName(name: string): string {
@@ -44,7 +53,9 @@ function fileName(name: string): string {
 }
 
 function start(palette: Palette): void {
-  const editor = new Editor(palette, initialDocument());
+  const initial = initialDocument();
+  const editor = new Editor(palette, initial.doc);
+  if (initial.notice) setTimeout(() => window.alert(initial.notice), 0);
   const stage = h("section", { class: "stage" });
   const status = h("footer", { class: "statusbar" });
   const dialog = h("dialog", { class: "dialog" });
@@ -71,7 +82,8 @@ function start(palette: Palette): void {
     const contents = LAYERS.map((layer) => {
       const brush = editor.get(layer, x, y);
       if (!brush) return null;
-      return `${LAYER_NAMES[layer]}: ${palette.byLayer[layer].get(brush.id)?.name ?? brush.id}`;
+      const id = primaryId(brush);
+      return `${LAYER_NAMES[layer]}: ${palette.byLayer[layer].get(id)?.name ?? id}`;
     }).filter(Boolean);
     hoverText.textContent = `${x}, ${y}${contents.length ? "  ·  " + contents.join("  ·  ") : ""}`;
   };
@@ -89,8 +101,10 @@ function start(palette: Palette): void {
         const file = input.files?.[0];
         if (!file) return;
         try {
-          editor.replaceDocument(deserialize(await file.text()));
+          const { document, problems } = parseDocument(await file.text());
+          editor.replaceDocument(document);
           view.fit();
+          if (problems.length) window.alert(`${file.name} was opened, but some of it could not be read:\n\n${problems.join("\n")}`);
         } catch (error) {
           window.alert(`Could not open ${file.name}: ${(error as Error).message}`);
         }

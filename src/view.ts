@@ -1,4 +1,5 @@
-import { LAYERS, inBounds, type Brush, type LayerId } from "./document";
+import { LAYERS, inBounds, type LayerId } from "./document";
+import { primaryId, type Brush } from "./brush";
 import { clampRect, rectContains, type Editor, type Rect } from "./editor";
 import { iconOrigin } from "./palette";
 
@@ -175,7 +176,7 @@ export class MapView {
   private drawBrush(layer: LayerId, brush: Brush, sx: number, sy: number, size: number): void {
     const { ctx } = this;
     const palette = this.editor.palette;
-    const item = palette.byLayer[layer].get(brush.id);
+    const item = palette.byLayer[layer].get(primaryId(brush));
 
     if (item?.icon != null) {
       const [ax, ay] = iconOrigin(palette, item.icon);
@@ -457,7 +458,7 @@ export class MapView {
     for (const layer of order) {
       const brush = editor.visible[layer] ? editor.get(layer, x, y) : null;
       if (brush) {
-        editor.select(layer, brush.id);
+        editor.select(layer, primaryId(brush));
         return;
       }
     }

@@ -1,5 +1,10 @@
 // The domain document: what the editor edits and what is saved to / loaded from .json files.
-// See docs/format.md for the on-disk format.
+// See docs/format.md for the on-disk format and docs/domain.schema.json for its schema.
+
+import { parseBrush, sameBrush, type Brush } from "./brush";
+import { migrate, type FileData } from "./migrate";
+
+export { sameBrush, type Brush };
 
 export const LAYERS = ["floor", "structure", "object", "marker"] as const;
 export type LayerId = (typeof LAYERS)[number];
@@ -10,12 +15,6 @@ export const LAYER_NAMES: Record<LayerId, string> = {
   object: "Object",
   marker: "Marker",
 };
-
-/**
- * What a cell becomes in the game. Only fixed brushes exist for now;
- * tile sets and random modes (weak/default/full/chance) will extend this union.
- */
-export type Brush = { kind: "fixed"; id: string };
 
 export interface DomainDocument {
   name: string;
@@ -37,11 +36,6 @@ export function cellKey(x: number, y: number): string {
 export function parseKey(key: string): [number, number] {
   const [x, y] = key.split(",").map(Number);
   return [x, y];
-}
-
-export function sameBrush(a: Brush | null | undefined, b: Brush | null | undefined): boolean {
-  if (!a || !b) return !a && !b;
-  return a.kind === b.kind && a.id === b.id;
 }
 
 export function createDocument(name: string, width: number, height: number): DomainDocument {
@@ -78,22 +72,59 @@ export function serialize(doc: DomainDocument): string {
   ) + "\n";
 }
 
-export function deserialize(text: string): DomainDocument {
-  const data = JSON.parse(text);
-  if (data?.format !== FORMAT_ID) throw new Error("Not a Qlippoth domain file.");
-  if (data.version !== FORMAT_VERSION) throw new Error(`Unsupported format version ${data.version}.`);
+export interface ParseResult {
+  document: DomainDocument;
+  /** Things that were dropped while reading, so the user can be told instead of losing data silently. */
+  problems: string[];
+}
 
-  const doc = createDocument(String(data.name ?? "Untitled"), Number(data.width), Number(data.height));
-  for (const layer of LAYERS) {
-    const cells = data.layers?.[layer] ?? {};
-    for (const [key, brush] of Object.entries(cells)) {
-      const [x, y] = parseKey(key);
-      if (!inBounds(doc, x, y)) continue;
-      const b = brush as Brush;
-      if (b?.kind === "fixed" && typeof b.id === "string") doc.layers[layer].set(cellKey(x, y), { kind: "fixed", id: b.id });
-    }
+/** Reads a domain file of any known version. Throws if it is not a domain file or the version is unknown. */
+export function parseDocument(text: string): ParseResult {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error("Not a valid JSON file.");
   }
-  return doc;
+  if (typeof raw !== "object" || raw === null || (raw as FileData).format !== FORMAT_ID) throw new Error("Not a Qlippoth domain file.");
+  const data = migrate(raw as FileData, FORMAT_VERSION);
+
+  const width = Number(data.width);
+  const height = Number(data.height);
+  const problems: string[] = [];
+  if (!Number.isInteger(width) || !Number.isInteger(height) || clampSize(width) !== width || clampSize(height) !== height) {
+    problems.push(`Size ${String(data.width)}×${String(data.height)} is not valid; it was changed to fit ${MIN_SIZE}–${MAX_SIZE}.`);
+  }
+
+  const document = createDocument(typeof data.name === "string" ? data.name : "Untitled", width, height);
+  const layers = (typeof data.layers === "object" && data.layers !== null ? data.layers : {}) as Record<string, unknown>;
+  for (const layer of LAYERS) {
+    const cells = layers[layer];
+    if (cells === undefined) continue;
+    if (typeof cells !== "object" || cells === null) {
+      problems.push(`Layer "${layer}" is not an object and was skipped.`);
+      continue;
+    }
+    let outside = 0;
+    let invalid = 0;
+    for (const [key, value] of Object.entries(cells)) {
+      const [x, y] = parseKey(key);
+      const brush = parseBrush(value);
+      if (!brush || cellKey(x, y) !== key) invalid++;
+      else if (!inBounds(document, x, y)) outside++;
+      else document.layers[layer].set(key, brush);
+    }
+    if (outside) problems.push(`${outside} ${layer} cell(s) outside the map were dropped.`);
+    if (invalid) problems.push(`${invalid} ${layer} cell(s) with an unknown key or brush were dropped.`);
+  }
+  for (const layer of Object.keys(layers)) {
+    if (!(LAYERS as readonly string[]).includes(layer)) problems.push(`Unknown layer "${layer}" was skipped.`);
+  }
+  return { document, problems };
+}
+
+export function deserialize(text: string): DomainDocument {
+  return parseDocument(text).document;
 }
 
 export function inBounds(doc: DomainDocument, x: number, y: number): boolean {

@@ -1,7 +1,8 @@
 # Domain file format (version 1)
 
 A domain file is UTF-8 JSON with the `.domain.json` extension. It is written by the editor and read by the game
-(see [game-integration.md](game-integration.md)). A machine-readable [JSON Schema](domain.schema.json) is included.
+(see [game-integration.md](game-integration.md)). A machine-readable [JSON Schema](domain.schema.json) is included,
+and [`fixtures/`](../fixtures) holds example files that every reader should handle identically.
 
 ```json
 {
@@ -89,7 +90,7 @@ proposed in [atmosphere.md](atmosphere.md).
 ## Rules for readers
 
 - Reject files whose `format` is not `"qlippoth-domain"`.
-- Reject files whose `version` they do not know. Do not guess.
+- Reject files whose `version` is newer than they know. Do not guess. Older versions are upgraded (see Versioning).
 - The editor ignores cells outside the size and brushes of unknown kind when opening a file. The game reader is
   stricter and rejects the file, because a game file should never contain them.
 - Unknown ids (renamed or removed prototypes) are reported, not fatal. The editor shows them in Checks; the game skips the cell and logs a warning.
@@ -112,10 +113,19 @@ A file is ready for the game when:
 
 ## Versioning
 
+`version` is a positive integer that grows by one with every change to the format.
+
+- Readers **must reject** files with a `version` newer than they know.
+- Readers **should accept** older versions by upgrading them step by step (1 → 2 → 3 …).
+  The editor does this in `src/migrate.ts`; each step only rewrites raw JSON, so old files keep opening.
+- The editor always writes the newest version. Opening and saving an old file upgrades it.
+- When opening a file, the editor tells the user which cells it had to drop (outside the map, bad key, unknown
+  brush, unknown layer).
+
 | Version | Editor | Changes |
 |---|---|---|
 | 1 | 0.1.0 | First version: fixed brushes, four layers, four markers |
 | 2 | planned | Optional top-level `atmosphere` ([atmosphere.md](atmosphere.md)) and random brushes (roadmap stage 2) |
 
-Any change to the format bumps `FORMAT_VERSION` in `src/document.ts`, adds a row here, and needs a matching change in
-the game reader. New marker ids are not a format change, but older game readers will warn about them.
+Any change to the format bumps `FORMAT_VERSION` in `src/document.ts`, adds an upgrade step in `src/migrate.ts` and a
+row here, and needs a matching change in the game reader. New marker ids are not a format change, but older game readers will warn about them.

@@ -4,11 +4,10 @@ import {
   clampSize,
   inBounds,
   parseKey,
-  sameBrush,
-  type Brush,
   type DomainDocument,
   type LayerId,
 } from "./document";
+import { brushIds, fixedBrush, sameBrush, type Brush } from "./brush";
 import type { Palette } from "./palette";
 
 export const TOOLS = ["brush", "rect", "fill", "erase", "pick", "select"] as const;
@@ -117,7 +116,7 @@ export class Editor {
 
   selectedBrush(): Brush | null {
     const id = this.selected[this.activeLayer];
-    return id ? { kind: "fixed", id } : null;
+    return id ? fixedBrush(id) : null;
   }
 
   // ---- Editing ---------------------------------------------------------------------------------
@@ -334,7 +333,7 @@ export class Editor {
     const warnings: Warning[] = [];
     const markers = this.doc.layers.marker;
     const positions = (id: string) =>
-      [...markers.entries()].filter(([, brush]) => brush.id === id).map(([key]) => parseKey(key));
+      [...markers.entries()].filter(([, brush]) => brushIds(brush).includes(id)).map(([key]) => parseKey(key));
 
     const entries = positions("Entry");
     if (entries.length === 0) warnings.push({ message: "No Entry marker." });
@@ -345,7 +344,7 @@ export class Editor {
       const [x, y] = parseKey(key);
       if (!this.doc.layers.floor.has(key)) warnings.push({ message: "Marker without a floor tile.", at: [x, y] });
       const structure = this.doc.layers.structure.get(key);
-      if (structure && this.palette.byLayer.structure.get(structure.id)?.category === "Structures/Walls") {
+      if (structure && brushIds(structure).some((id) => this.palette.byLayer.structure.get(id)?.category === "Structures/Walls")) {
         warnings.push({ message: "Marker inside a wall.", at: [x, y] });
       }
     }
@@ -353,7 +352,9 @@ export class Editor {
     for (const layer of LAYERS) {
       const missing = new Map<string, [number, number]>();
       for (const [key, brush] of this.doc.layers[layer]) {
-        if (!this.palette.byLayer[layer].has(brush.id) && !missing.has(brush.id)) missing.set(brush.id, parseKey(key));
+        for (const id of brushIds(brush)) {
+          if (!this.palette.byLayer[layer].has(id) && !missing.has(id)) missing.set(id, parseKey(key));
+        }
       }
       for (const [id, at] of missing) warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette).`, at });
     }

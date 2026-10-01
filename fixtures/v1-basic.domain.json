@@ -1,0 +1,73 @@
+{
+  "format": "qlippoth-domain",
+  "version": 1,
+  "name": "Fixture: basic room",
+  "width": 5,
+  "height": 4,
+  "layers": {
+    "floor": {
+      "1,1": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "2,1": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "3,1": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "1,2": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "2,2": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "3,2": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      }
+    },
+    "structure": {
+      "0,0": {
+        "kind": "fixed",
+        "id": "WallSolid"
+      },
+      "4,0": {
+        "kind": "fixed",
+        "id": "WallSolid"
+      },
+      "0,3": {
+        "kind": "fixed",
+        "id": "WallSolid"
+      },
+      "4,3": {
+        "kind": "fixed",
+        "id": "WallSolid"
+      }
+    },
+    "object": {
+      "3,2": {
+        "kind": "fixed",
+        "id": "Table"
+      }
+    },
+    "marker": {
+      "1,1": {
+        "kind": "fixed",
+        "id": "Entry"
+      },
+      "3,1": {
+        "kind": "fixed",
+        "id": "Objective"
+      },
+      "2,2": {
+        "kind": "fixed",
+        "id": "QlippothSpot"
+      }
+    }
+  }
+}
