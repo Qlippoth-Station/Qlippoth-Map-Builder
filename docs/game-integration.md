@@ -87,9 +87,16 @@ So **domain files plug in as a second `QlippothDungeon` implementation.** Nothin
    Resources/Domains/<snake_case_name>.domain.json
    ```
 
-   `Resources/Domains/` is a suggested location. It does not exist yet; the first game-side PR creates it.
-   Any folder under `Resources/` works, because the game reads it by its content path (`/Domains/...`).
+   Domain files always live in `Resources/Domains/` (subfolders are fine). The first game-side PR creates the folder.
+   The game reads it by its content path (`/Domains/...`).
 3. Use lowercase file names with underscores (`yellow_palace.domain.json`). Content paths are case sensitive on Linux servers.
+4. With both repositories side by side in the same folder (see the README), check every domain file from the editor
+   repository before committing:
+
+   ```bash
+   npm run palette   # once, or after pulling the game
+   npm run domains   # schema, bounds, Entry / QlippothSpot, markers on floor, ids that exist in the game
+   ```
 
 Commit the file as is. The editor writes cells sorted by `y`, then `x`, so later edits produce small diffs.
 

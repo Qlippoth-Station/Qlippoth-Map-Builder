@@ -17,6 +17,8 @@ canvas. There is no framework, no backend and no runtime dependency.
 | `src/dom.ts` | `h()` element helper and `clear()` |
 | `src/style.css` | All styles |
 | `scripts/build-palette.mjs` | Node script that builds the palette from the game (see [palette.md](palette.md)) |
+| `scripts/check-domains.mjs` | Node script that checks the domain files in the game checkout |
+| `scripts/game-dir.mjs` | Finds the game checkout, next to this repository by default |
 
 ## Data flow
 

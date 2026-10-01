@@ -43,7 +43,7 @@ Listed in the order the work is done.
 |---|---|---|
 | 1 | Palette from game data, layered grid editor, fixed brushes, save/open, checks | ✅ |
 | 0 | Groundwork: tests in CI, JSON schema, format fixtures, version upgrades, brush logic in one module | ✅ |
-| 4a | Game side, first slice: `RecipeDungeon` reads version 1 files (fixed brushes and markers); file location decided | ⏳ |
+| 4a | Game side, first slice: `RecipeDungeon` reads version 1 files (fixed brushes and markers). Done on the editor side: side-by-side repository layout, files in `Resources/Domains/`, `npm run domains` check | ⏳ |
 | 2 | Tile sets and random modes (weak / default / full / chance) with roll scope (cell / group / map), seeded preview. Starts with a written randomness spec and seeded test vectors shared with the game | ⏳ |
 | 3 | Templates, template sets, connection points, rotate/mirror, compatibility checks | ⏳ |
 | 4b | Game side: reads stage 2 and 3 files and resolves randomness with the same seeded RNG, checked against the shared test vectors | ⏳ |
@@ -52,14 +52,23 @@ Listed in the order the work is done.
 
 ## Development
 
-Requires Node.js 22+ and a checkout of the game repository.
+Requires Node.js 22+ and a checkout of the game repository. Keep both repositories side by side in the same folder;
+the scripts find the game there without any path:
+
+```
+<any folder>/
+  Qlippoth-station-14/    the game
+  Qlippoth-Map-Builder/   this editor
+```
 
 ```bash
 npm install
-npm run palette -- --game ../Qlippoth-station-14   # builds public/palette from the game files
+npm run palette   # builds public/palette from ../Qlippoth-station-14
 npm run dev
+npm run domains   # checks every ../Qlippoth-station-14/Resources/Domains/**/*.domain.json
 ```
 
+`--game <path>` (or `QLIPPOTH_GAME_DIR`) points `palette` and `domains` at another checkout.
 `npm test` runs the unit tests. `npm run build` type-checks and produces `dist/`. Neither needs the palette.
 
 The palette (`public/palette/`) is generated, not committed. CI checks out the game repository, rebuilds the palette
@@ -71,6 +80,8 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | Path | What |
 |---|---|
 | `scripts/build-palette.mjs` | Reads tile and entity prototypes, resolves inheritance, builds `palette.json`, `atlas.png`, `credits.json` |
+| `scripts/check-domains.mjs` | Checks the domain files in the game checkout (schema, bounds, markers, ids) |
+| `scripts/game-dir.mjs` | Finds the game checkout (next to this repository by default) |
 | `src/document.ts` | Domain document model and file format |
 | `src/brush.ts` | Brush kinds and everything that depends on their shape |
 | `src/migrate.ts` | Upgrades older file versions to the current one |

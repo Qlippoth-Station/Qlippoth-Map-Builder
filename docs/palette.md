@@ -5,10 +5,13 @@ repository by `scripts/build-palette.mjs`, so the editor always offers what the 
 
 ## Building it
 
+With the game checked out next to this repository (`../Qlippoth-station-14`, see the README), no path is needed:
+
 ```bash
-npm run palette -- --game ../Qlippoth-station-14
-# or
-QLIPPOTH_GAME_DIR=../Qlippoth-station-14 npm run palette
+npm run palette
+# another checkout:
+npm run palette -- --game /path/to/Qlippoth-station-14
+QLIPPOTH_GAME_DIR=/path/to/Qlippoth-station-14 npm run palette
 ```
 
 The game checkout only needs `Resources/Prototypes`, `Resources/Textures` and `Resources/Locale/en-US`.

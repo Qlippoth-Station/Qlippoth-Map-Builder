@@ -10,7 +10,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "palette": "node scripts/build-palette.mjs"
+    "palette": "node scripts/build-palette.mjs",
+    "domains": "node scripts/check-domains.mjs"
   },
   "devDependencies": {
     "ajv": "^8.20.0",

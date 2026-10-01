@@ -5,6 +5,8 @@
 1. Build it in the editor and **Save** the `.domain.json` file.
 2. Open a pull request in the game repository with the file under `Resources/Domains/`. See [docs/game-integration.md](docs/game-integration.md) for how the game loads it.
 3. Make sure the *Checks* panel is clean, or explain in the PR why a warning is fine.
+4. With the game and this repository side by side in one folder, `npm run domains` checks every domain file in the game
+   checkout the same way.
 
 ## Changing the editor
 

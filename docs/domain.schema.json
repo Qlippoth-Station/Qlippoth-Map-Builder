@@ -21,7 +21,9 @@
         "object": { "$ref": "#/$defs/layer" },
         "marker": {
           "$ref": "#/$defs/layer",
+          "type": "object",
           "additionalProperties": {
+            "type": "object",
             "properties": { "id": { "enum": ["Entry", "QlippothSpot", "Objective", "Connection"] } }
           }
         }

@@ -32,6 +32,7 @@ jobs:
             Resources/Prototypes
             Resources/Textures
             Resources/Locale/en-US
+            Resources/Domains
 
       - uses: actions/setup-node@v4
         with:
@@ -42,6 +43,11 @@ jobs:
       - run: npm test
       - run: npm run palette -- --game game
       - run: npm run build
+
+      # Reports broken domain files in the game. Informational here: the game's own CI is what blocks them,
+      # and a broken file in the game must not stop the editor from deploying.
+      - run: npm run domains -- --game game
+        continue-on-error: true
 
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
