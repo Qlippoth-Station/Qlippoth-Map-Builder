@@ -60,8 +60,19 @@ Both count towards the number of objectives the crew must complete. See [game-in
 | Fill | `F` | Fills the connected area (4 directions) that holds the same thing as the clicked cell. Empty cells count as "the same thing", so filling an empty area fills all empty cells around it |
 | Erase | `E` | Click or drag to clear cells on the active layer only |
 | Pick | `I` | Click a cell to select the item under it. **Right click** does the same with any tool |
+| Select | `S` | Drag to select a rectangle. Drag from inside it to move the area with its contents on **every** layer |
 
 Tools always act on the **active layer**. Picking an item from the palette or with Pick switches to its layer and back to Brush.
+
+### Selections
+
+With a selection active:
+
+- drag from inside it, or press the arrow keys (`Shift` + arrow for 5 cells), to move it together with everything inside it on all four layers,
+- `Delete` or `Backspace` clears the selected area on every layer,
+- `Esc` drops the selection.
+
+A move is one undo step. Moves stop at the edge of the map, so nothing is pushed off it. The status bar shows the size and position of the selection.
 
 Pick looks at the active layer first, then the other visible layers from top (Marker) to bottom (Floor).
 
@@ -131,9 +142,13 @@ Press `?` in the editor (top bar) to see this list.
 
 | Key | Action |
 |---|---|
-| `B` `R` `F` `E` `I` | Brush, Rectangle, Fill, Erase, Pick |
+| `B` `R` `F` `E` `I` `S` | Brush, Rectangle, Fill, Erase, Pick, Select |
 | `1` `2` `3` `4` | Floor, Structure, Object, Marker layer |
 | Right click | Pick item under cursor |
+| Drag inside selection | Move the selection and its contents |
+| Arrows / `Shift` + arrows | Move the selection by 1 / 5 cells |
+| `Delete` | Clear the selected area on every layer |
+| `Esc` | Drop the selection |
 | `Space` + drag / middle drag | Pan |
 | Wheel | Zoom |
 | `0` | Fit to view |
