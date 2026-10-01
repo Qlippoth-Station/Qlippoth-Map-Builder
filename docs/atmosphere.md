@@ -1,58 +1,123 @@
 # Atmosphere in rift domains
 
-> **Status: not implemented.** Neither the editor nor the domain file format has any atmosphere setting, and the
-> game does not give rift maps any air today. This page records what happens now, what should happen, and a proposed
-> design for both sides. The proposed C# has not been compiled or tested.
+> **Status:** the game already gives rift maps breathable air (fixed in the game repository). The editor and the
+> domain file format have **no atmosphere setting yet**, so every domain gets the game's default air.
+> This page proposes how a domain can choose its own atmosphere. The proposed C# has not been compiled or tested.
 
-## What happens today
+## Goal
 
-This section comes from reading the game code at commit `f2e572d`. Nobody has checked it in game yet.
+A domain designer often knows what the air should be: a frozen tomb, a plasma-flooded lab, a room open to space.
+The designer should be able to pick that in the editor, save it with the domain, and get it in game. Nobody should
+have to edit C# or remember to set it in YAML.
 
-1. `QGateSystem.CreateRiftDungeon` creates a new map with `_mapManager.CreateMap()` and one grid on it.
-   It does **not** call `AtmosphereSystem.SetMapAtmosphere`, so the map has no `MapAtmosphereComponent`
-   and counts as space (vacuum, 2.7 K).
-2. When the dungeon places floor tiles, `AutomaticAtmosSystem` gives the grid a `GridAtmosphereComponent` once it is
-   larger than about 7 tiles. New tiles in a grid atmosphere start **without gas**.
-3. Tiles next to space leak into the map's vacuum. `ArenaDungeon` leaves a gap in its south wall, so the arena is open to space anyway.
+## Overview
 
-The likely result: **rifts are vacuum.** Players without internals and a hardsuit take pressure and suffocation damage.
-If that is not intended, the game needs a fix whatever the editor does.
-
-Compare `ContainmentDimensionSystem.EnsureContainmentDimensionCreated`, which does set up its map:
-
-```csharp
-var mapUid = _maps.CreateMap(out var mapId);
-var moles = new float[Atmospherics.AdjustedNumberOfGases];
-moles[(int) Gas.Oxygen] = 21.824779f;
-moles[(int) Gas.Nitrogen] = 82.10312f;
-_atmosphere.SetMapAtmosphere(mapUid, false, new GasMixture(moles, Atmospherics.T20C));
-var gravity = EnsureComp<GravityComponent>(mapUid);
-gravity.Enabled = true;
-gravity.Inherent = true;
+```
+ Editor                         .domain.json (version 2)          Game
+ ──────                         ────────────────────────          ────
+ Atmosphere panel ──Save──►  "atmosphere": {                ──►  RecipeDungeon reads it
+ preset / gases /              "preset": "custom",                 │
+ temperature, checks           "temperature": 233.15,              ▼
+                               "gases": { ... } }               applied to the rift map instead of
+                                                                the game's default air
 ```
 
-**How to check it in game:** open a rift with `qgate_spawn <phase> immediate`, walk in and use a gas analyzer, or
-turn on the atmos debug overlay as an admin. Note the pressure and gases on a floor tile in the middle of the domain.
+What wins, from strongest to weakest:
 
-## Why a map atmosphere fits rifts
+1. `atmosphere` in the Qlippoth's YAML (`dungeon: !type:RecipeDungeon … atmosphere: …`), if set,
+2. `atmosphere` in the domain file,
+3. the game's default rift air (what rifts get today).
 
-The game has two ways to give a place air:
+So one domain can be reused by a Qlippoth that needs different air, and old domains keep today's behaviour.
 
-| Way | How it works | Fit for rifts |
+## 1. File format: an `atmosphere` field (format version 2)
+
+Domain files get an optional top-level `atmosphere` object:
+
+```json
+{
+  "format": "qlippoth-domain",
+  "version": 2,
+  "name": "Frozen Tomb",
+  "width": 20,
+  "height": 15,
+  "atmosphere": {
+    "preset": "custom",
+    "temperature": 233.15,
+    "gases": { "Oxygen": 21.82, "Nitrogen": 82.10 }
+  },
+  "layers": { "...": "..." }
+}
+```
+
+| Field | Values | Meaning |
 |---|---|---|
-| **Map atmosphere** (`SetMapAtmosphere(map, space: false, mixture)`) | The whole map counts as filled with an unchanging mixture. Tiles open to it are refilled from it | **Good.** A domain needs no sealed walls and the air never runs out. Same approach as the containment dimension |
-| **Grid atmosphere** (gas in each tile) | Each tile holds its own gas; open edges leak | Domains would need sealed walls, and the gas would have to be put into every tile |
+| `preset` | `"default"`, `"breathable"`, `"vacuum"`, `"custom"` | `default` (or a missing `atmosphere`) keeps the game's own rift air. `breathable` is standard station air at 20 °C. `vacuum` is space. `custom` uses the fields below |
+| `temperature` | kelvin, > 0 | Only for `custom`. Default 293.15 (20 °C) |
+| `gases` | object of gas name → moles per tile | Only for `custom`. Names are the game's `Gas` enum: `Oxygen`, `Nitrogen`, `CarbonDioxide`, `Plasma`, `Tritium`, `WaterVapor`, `Ammonia`, `NitrousOxide`, `Frezon` |
 
-So the proposal is: **every rift map gets a map atmosphere, chosen per domain**, with breathable air as the default.
-Tile-level gas (for example a plasma-filled room inside a breathable domain) is a later, separate feature.
+Rules:
 
-## Proposed design
+- A missing `atmosphere` is the same as `"preset": "default"`. Version 1 files are read that way, so they behave
+  exactly as they do now.
+- Moles are per tile, the same unit as the game's `GasMixture`. Standard air is `Oxygen` 21.82 + `Nitrogen` 82.10
+  = 103.93 moles at 293.15 K, which is 101.3 kPa in the game's 2500 L tile.
+- Unknown gas names are an error in the game reader and a warning in the editor.
+- More presets (for example `cold`, `hot`, `plasma`) can be added later without a version bump, as long as old readers treat unknown presets as an error rather than guessing.
 
-### 1. Game: give every rift map an atmosphere (no editor change needed)
+Adding the field is a format change, so `FORMAT_VERSION` goes to 2 (see [format.md](format.md#versioning)).
+The editor must keep opening version 1 files. Random brushes (roadmap stage 2) also need version 2; if both are being
+worked on, ship them in the same version.
 
-This fixes today's behaviour for `ArenaDungeon` too, and can ship before anything else on this page.
+## 2. Editor
 
-Add an atmosphere setting to the dungeon base class:
+### Atmosphere panel
+
+A new **Atmosphere** section in the left sidebar, under **View**:
+
+- **Preset** dropdown: *Game default*, *Breathable*, *Vacuum*, *Custom*.
+- With *Custom*:
+  - temperature in °C (stored in kelvin),
+  - one moles field per gas, empty meaning 0,
+  - a "Start from breathable air" button that fills in standard air to edit from.
+- A live summary next to it: total pressure in kPa and, for custom air, the oxygen partial pressure. Pressure is
+  `P = n · R · T / V` with `R = 8.314462618` and `V = 2500` L, the game's constants, so designers read
+  "101 kPa, 21 kPa O₂" instead of raw moles.
+
+Changing the atmosphere is one undoable edit, like rename and resize, and marks the document as unsaved.
+
+### Map hint
+
+Tint the map background (or show a small badge in the status bar) when the preset is not *Game default*, for example
+blue-white for cold, dark for vacuum, so the setting is not forgotten.
+
+### Checks
+
+New entries in the Checks panel. These are warnings: hostile air can be the point of a domain, but it should be a choice.
+
+| Check | Condition |
+|---|---|
+| Air is not breathable | Oxygen partial pressure under 16 kPa, or any plasma, tritium, frezon, or more than about 1 kPa of CO₂ |
+| Extreme temperature | Under 0 °C or above 50 °C |
+| Very high pressure | Total over 1000 kPa, probably a typo |
+| Vacuum | Preset is *Vacuum*: remind that players need hardsuits |
+| Unknown gas | Gas name not in the list above |
+
+### Code changes
+
+| File | Change |
+|---|---|
+| `src/document.ts` | `Atmosphere` type, `atmosphere` on `DomainDocument`, `FORMAT_VERSION = 2`, read v1 and v2, write v2 |
+| `src/editor.ts` | `setAtmosphere()` as an undoable change (new `Change` type), new checks in `validate()` |
+| `src/ui.ts` | Atmosphere section in the left sidebar |
+| `src/view.ts` | Optional background tint |
+| `docs/format.md`, `docs/domain.schema.json` | Document and validate the new field |
+
+## 3. Game
+
+### Reading the field
+
+`QlippothDomainFile` (see [game-integration.md](game-integration.md)) reads `atmosphere` into a small data class:
 
 ```csharp
 // Content.Server/Qlippoth/QlippothRiftAtmosphere.cs
@@ -60,7 +125,7 @@ using Content.Shared.Atmos;
 
 namespace Content.Server.Qlippoth;
 
-/// <summary>The air that fills a rift map. Applied as a map atmosphere, so domains do not need sealed walls.</summary>
+/// <summary>Air a dungeon asks for. Null on a dungeon means "use the game's default rift air".</summary>
 [DataDefinition]
 public sealed partial class QlippothRiftAtmosphere
 {
@@ -89,137 +154,84 @@ public sealed partial class QlippothRiftAtmosphere
 }
 ```
 
-```csharp
-// QlippothDungeon.cs, in the abstract base class
-/// <summary>Air of the rift map. Breathable station air unless set.</summary>
-[DataField]
-public QlippothRiftAtmosphere Atmosphere { get; set; } = new();
+The presets map onto it: `breathable` is a default instance, `vacuum` is `Space = true`, `custom` fills in
+`Temperature` and `Gases`, and `default` is `null`.
 
-/// <summary>Whether the rift map has gravity.</summary>
-[DataField]
-public bool Gravity { get; set; } = true;
-```
+### Applying it
 
-Then apply it in `QGateSystem.CreateRiftDungeon`, before `Build` so tiles are filled as they are placed:
+The dungeon tells the gate system which air it wants. One way is to add it to the layout `Build` already returns:
 
 ```csharp
-var mapUid = _maps.CreateMap(out var mapId);
-var atmosphere = definition.Atmosphere;
-_atmosphere.SetMapAtmosphere(mapUid, atmosphere.Space, atmosphere.ToMixture());
-if (definition.Gravity)
-{
-    var gravity = EnsureComp<GravityComponent>(mapUid);
-    gravity.Enabled = true;
-    gravity.Inherent = true;
-    Dirty(mapUid, gravity);
-}
-
-var gridEntity = _mapManager.CreateGridEntity(mapId);
-// ... unchanged
+public readonly record struct QlippothDungeonLayout(
+    Vector2 Entry, Vector2 QlippothSpot, int ObjectiveCount, QlippothRiftAtmosphere? Atmosphere = null);
 ```
 
-(`QGateSystem` needs `[Dependency] private AtmosphereSystem _atmosphere` for this.)
+and give every dungeon an optional YAML field on the `QlippothDungeon` base class:
 
-YAML then looks like this. Leaving `atmosphere` out gives breathable air:
+```csharp
+/// <summary>Air of the rift map. Null keeps the game's default rift air.</summary>
+[DataField]
+public QlippothRiftAtmosphere? Atmosphere { get; set; }
+```
+
+`ArenaDungeon` returns `Atmosphere` in its layout. `RecipeDungeon` returns `Atmosphere` if it is set in YAML, else
+the one from the file, else `null`.
+
+Then, where the game now sets up the default rift air, use the dungeon's choice when there is one:
+
+```csharp
+if (layout.Atmosphere is { } air)
+    _atmosphere.SetMapAtmosphere(mapUid, air.Space, air.ToMixture());
+// else: keep the game's existing default rift air, unchanged
+```
+
+**Align this with how the game's existing fix works.** The snippet assumes the default air is a *map atmosphere*
+(`SetMapAtmosphere`, as the containment dimension does). With a map atmosphere the whole map counts as filled with an
+unchanging mixture, so domains do not need sealed walls and the air never runs out. If the game's fix instead fills
+each tile of the grid atmosphere, the domain's air should be applied the same way, after `Build` has placed the tiles.
+Either way, the override goes in the same place as the default, so there is one code path for rift air.
+
+### YAML override
+
+The same class can be set from YAML, overriding the file:
 
 ```yaml
-dungeon: !type:ArenaDungeon
-  width: 24
-  height: 18
+dungeon: !type:RecipeDungeon
+  path: /Domains/frozen_tomb.domain.json
   atmosphere:
     temperature: 233.15        # -40 °C
     gases:
       Oxygen: 21.82
       Nitrogen: 82.10
-      CarbonDioxide: 5
 ```
 
 ```yaml
 dungeon: !type:RecipeDungeon
   path: /Domains/yellow_palace.domain.json
   atmosphere:
-    space: true                # this rift is vacuum on purpose
-  gravity: false
+    space: true                # this Qlippoth's rift is vacuum on purpose
 ```
 
-### 2. Editor and file format: store the atmosphere with the domain
+### Integration test
 
-A domain designer usually knows what the air should be ("a frozen tomb", "a plasma-flooded lab"). Storing it in the
-file keeps the domain self-contained. Proposed **format version 2** addition: an optional top-level `atmosphere`
-object.
+The domain file test in [game-integration.md](game-integration.md#step-5-guard-it-with-an-integration-test) also checks
+that gas names are known and that temperature and pressure are within sane bounds.
 
-```json
-{
-  "format": "qlippoth-domain",
-  "version": 2,
-  "name": "Frozen Tomb",
-  "width": 20,
-  "height": 15,
-  "atmosphere": {
-    "preset": "custom",
-    "temperature": 233.15,
-    "gases": { "Oxygen": 21.82, "Nitrogen": 82.10 }
-  },
-  "layers": { "...": "..." }
-}
-```
+## 4. Later: atmosphere zones
 
-| Field | Values | Meaning |
-|---|---|---|
-| `preset` | `"breathable"` (default), `"vacuum"`, `"custom"` | `breathable` is standard station air at 20 °C. `vacuum` is space. `custom` uses the fields below |
-| `temperature` | kelvin, > 0 | Only for `custom`. Default 293.15 |
-| `gases` | object of gas name → moles per tile | Only for `custom`. Names are the game's `Gas` enum: `Oxygen`, `Nitrogen`, `CarbonDioxide`, `Plasma`, `Tritium`, `WaterVapor`, `Ammonia`, `NitrousOxide`, `Frezon` |
+Some ideas need different air in different parts of one domain, such as a plasma-flooded room behind an airlock.
+That would be a fifth layer, `atmos`, painted like the others, with brushes that name a gas mixture. The game would put
+that gas into the grid atmosphere of those tiles after building, and the room would need sealed walls and doors to keep it.
 
-Rules:
-
-- A missing `atmosphere` means `breathable`. Version 1 files are read as `breathable`.
-- Unknown gas names are an error in the game reader and a warning in the editor.
-- Moles are per tile, the same unit as the game's `GasMixture`. For reference, standard air is
-  `Oxygen` 21.82 + `Nitrogen` 82.10 = 103.92 moles at 293.15 K, which is 101.3 kPa.
-
-**Which value wins:** the Qlippoth's YAML `atmosphere` (if set) overrides the file, and the file overrides the default.
-This lets one domain be reused by a Qlippoth that needs different air.
-
-Because the format changes, the version goes to 2 (see [format.md](format.md#versioning)). The editor must keep opening
-version 1 files, and the game reader in [game-integration.md](game-integration.md) must read both versions.
-
-#### Editor UI
-
-- An **Atmosphere** section in the left sidebar: preset dropdown. With `custom`: temperature in °C (stored in kelvin)
-  and one moles field per gas. Show the resulting pressure in kPa next to it, using `P = n·R·T / V` with the game's
-  tile volume of 2500 L, so designers see "101 kPa" instead of raw moles.
-- Changing the atmosphere is an undoable edit, like rename and resize.
-- New checks in the Checks panel:
-  - *Atmosphere is not breathable*: oxygen partial pressure under about 16 kPa, temperature under 0 °C or above 50 °C,
-    or any plasma, tritium, CO₂ or frezon. This is a notice, not an error: hostile air can be intended, but it
-    should be a choice.
-  - *Total pressure above 1000 kPa*: probably a typo.
-  - *Unknown gas*.
-- The status bar or map background can be tinted for `vacuum` and `custom` so the setting is noticed.
-
-#### Game reader
-
-`QlippothDomainFile` gets an `Atmosphere` property (`QlippothRiftAtmosphere?`). `RecipeDungeon` exposes it so
-`CreateRiftDungeon` can apply it. The integration test checks gas names and that the values are sane.
-
-### 3. Later: atmosphere zones
-
-Some ideas need different air in different parts of one domain (a flooded room behind an airlock). This would be a
-fifth layer, `atmos`, painted like the others with brushes that name a gas mixture. The game would put that gas into
-the grid atmosphere of those tiles after building, and the room would need sealed walls and doors to keep it. This is
-much more work on both sides and should wait until whole-map atmosphere is used and there is a real need.
+This is much more work on both sides. It should wait until whole-domain atmosphere is in use and there is a real need.
 
 ## Suggested order of work
 
 | Step | Where | Size | Depends on |
 |---|---|---|---|
-| 1. Check the current behaviour in game | Game | Small | — |
-| 2. Map atmosphere + gravity per dungeon, default breathable | Game | Small | 1 |
-| 3. `atmosphere` in the file format (version 2), editor UI and checks | Editor | Medium | — |
-| 4. Read `atmosphere` from domain files in `RecipeDungeon` | Game | Small | 2, 3, stage 4 of the roadmap |
-| 5. Atmosphere zones (`atmos` layer) | Both | Large | 4 |
+| 1. `atmosphere` field in the format (version 2), schema, editor panel and checks | Editor | Medium | — |
+| 2. `QlippothRiftAtmosphere`, layout field, override where rift air is set up | Game | Small | — |
+| 3. `RecipeDungeon` reads `atmosphere` from the file, YAML override | Game | Small | 1, 2, stage 4 of the roadmap |
+| 4. Atmosphere zones (`atmos` layer) | Both | Large | 3 |
 
-Step 2 is worth doing first and on its own: it fixes the rifts that exist today.
-
-Version 2 is also planned for random brushes (roadmap stage 2). If both are being worked on, ship them in the same
-format version, so files do not go through 2 and 3 in quick succession.
+Steps 1 and 2 can be done in parallel. Step 2 is useful on its own: with it, `ArenaDungeon` Qlippoths can get custom air from YAML too.

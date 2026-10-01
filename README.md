@@ -43,7 +43,7 @@ See [docs/](docs/README.md): user guide, game integration, file format and JSON 
 | 2 | Tile sets and random modes (weak / default / full / chance) with roll scope (cell / group / map), seeded preview | ⏳ |
 | 3 | Templates, template sets, connection points, rotate/mirror, compatibility checks | ⏳ |
 | 4 | Game side: `RecipeDungeon` reads the files and resolves randomness with the same seeded RNG | ⏳ |
-| – | Rift atmosphere and gravity, per domain ([proposal](docs/atmosphere.md)). Rifts are currently vacuum | ⏳ |
+| – | Choose the atmosphere per domain in the editor ([proposal](docs/atmosphere.md)) | ⏳ |
 | 5 | Fully random domains built from the same template library | ⏳ |
 
 ## Development

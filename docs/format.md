@@ -83,8 +83,8 @@ Later versions will add set brushes with random modes (weak / default / full / c
 
 ## Not in version 1
 
-Atmosphere, gravity, lighting and entity rotation are not stored. The game decides them. For atmosphere, see the
-proposal in [atmosphere.md](atmosphere.md).
+Atmosphere, gravity, lighting and entity rotation are not stored. The game decides them. Storing the atmosphere is
+proposed in [atmosphere.md](atmosphere.md).
 
 ## Rules for readers
 

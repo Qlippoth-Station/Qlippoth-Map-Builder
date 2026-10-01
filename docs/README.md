@@ -6,7 +6,7 @@
 | [game-integration.md](game-integration.md) | Game developers, domain makers | How a `.domain.json` becomes a rift in the game; `RecipeDungeon` reference implementation, YAML, testing |
 | [format.md](format.md) | Anyone reading or writing files | File format reference, version 1 |
 | [domain.schema.json](domain.schema.json) | Tools and CI | JSON Schema for version 1 files |
-| [atmosphere.md](atmosphere.md) | Game and editor developers | Rift air: current behaviour (vacuum), proposed per-domain atmosphere in the game and the file format |
+| [atmosphere.md](atmosphere.md) | Game and editor developers | Proposal: choosing a domain's air in the editor, storing it in the file and applying it in the game |
 | [palette.md](palette.md) | Editor developers | How the palette is built from the game repository, and the CI that deploys it |
 | [architecture.md](architecture.md) | Editor developers | Code layout, data flow, undo, how to add markers, checks and tools |
 
