@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Qlippoth-Station/Qlippoth-Map-Builder/docs/format.schema.json",
+  "title": "Qlippoth domain file (version 1)",
+  "description": "A .domain.json file written by the Qlippoth Domain Builder. See docs/format.md.",
+  "type": "object",
+  "required": ["format", "version", "name", "width", "height", "layers"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "qlippoth-domain" },
+    "version": { "const": 1 },
+    "name": { "type": "string" },
+    "width": { "type": "integer", "minimum": 1, "maximum": 256 },
+    "height": { "type": "integer", "minimum": 1, "maximum": 256 },
+    "layers": {
+      "type": "object",
+      "required": ["floor", "structure", "object", "marker"],
+      "additionalProperties": false,
+      "properties": {
+        "floor": { "$ref": "#/$defs/cells" },
+        "structure": { "$ref": "#/$defs/cells" },
+        "object": { "$ref": "#/$defs/cells" },
+        "marker": {
+          "$ref": "#/$defs/cells",
+          "additionalProperties": {
+            "properties": { "id": { "enum": ["Entry", "QlippothSpot", "Objective", "Connection"] } }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "cells": {
+      "description": "Sparse cells keyed \"x,y\" (origin bottom-left, y grows upwards).",
+      "type": "object",
+      "propertyNames": { "pattern": "^(0|[1-9][0-9]*),(0|[1-9][0-9]*)$" },
+      "additionalProperties": { "$ref": "#/$defs/brush" }
+    },
+    "brush": {
+      "oneOf": [{ "$ref": "#/$defs/fixedBrush" }]
+    },
+    "fixedBrush": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "fixed" },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

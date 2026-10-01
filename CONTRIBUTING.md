@@ -9,6 +9,10 @@
 ## Changing the editor
 
 - Keep the editor fully client-side: no backend, no tracking, no external requests besides its own files.
-- Any change to the file format needs a `version` bump in `src/document.ts` and an update to `docs/format.md`.
-- Run `npm run build` before opening a pull request; CI runs the same command.
+- Any change to the file format needs, in the same pull request:
+  - a `version` bump (`FORMAT_VERSION` in `src/document.ts`),
+  - an upgrade step from the previous version in `src/migrate.ts`, with a test,
+  - updates to `docs/format.md`, `docs/format.schema.json` and, where useful, a new file in `fixtures/`.
+- A new brush kind is added in `src/brush.ts`; the type checker then points at every switch that has to handle it.
+- Run `npm test` and `npm run build` before opening a pull request; CI runs the same commands.
 - Do not commit `public/palette/`; it is generated from the game repository.
