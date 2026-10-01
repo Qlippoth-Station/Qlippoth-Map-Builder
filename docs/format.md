@@ -81,6 +81,11 @@ Version 1 only has fixed brushes: the cell always becomes the given id.
 
 Later versions will add set brushes with random modes (weak / default / full / chance) and roll scopes (cell / group / map).
 
+## Not in version 1
+
+Atmosphere, gravity, lighting and entity rotation are not stored. The game decides them. For atmosphere, see the
+proposal in [atmosphere.md](atmosphere.md).
+
 ## Rules for readers
 
 - Reject files whose `format` is not `"qlippoth-domain"`.
@@ -110,6 +115,7 @@ A file is ready for the game when:
 | Version | Editor | Changes |
 |---|---|---|
 | 1 | 0.1.0 | First version: fixed brushes, four layers, four markers |
+| 2 | planned | Optional top-level `atmosphere` ([atmosphere.md](atmosphere.md)) and random brushes (roadmap stage 2) |
 
 Any change to the format bumps `FORMAT_VERSION` in `src/document.ts`, adds a row here, and needs a matching change in
 the game reader. New marker ids are not a format change, but older game readers will warn about them.

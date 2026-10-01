@@ -485,6 +485,9 @@ path itself is exercised.
 
 Things that are **not** stored in version 1 files and therefore not built: entity rotation, cells outside the
 domain (space around the grid), lighting settings, atmosphere. Entities spawn with their prototype defaults.
+
+**Atmosphere:** rift maps currently get no air at all, so a domain is most likely vacuum in game, whatever it looks
+like in the editor. [atmosphere.md](atmosphere.md) explains why and proposes a fix for the game and the file format.
 The grid is created empty by `CreateRiftDungeon`, so cells without a floor tile are space.
 
 ## Keeping editor and game in sync
@@ -506,6 +509,7 @@ The grid is created empty by `CreateRiftDungeon`, so cells without a floor tile 
 | Players arrive in space | `Entry` marker missing or on a cell without floor. The editor's Checks panel warns about both |
 | Rift cannot be closed | No objectives were placed, so the gate kept its default objective count. Add `Objective` markers |
 | Objective entity does nothing | It was spawned without a gate link. Make sure the `RecipeDungeon` code above uses `PlaceObjective` for it |
+| Players suffocate or take pressure damage | Rift maps have no atmosphere yet; see [atmosphere.md](atmosphere.md) |
 | `unsupported domain format version` | The file was saved by a newer editor than the game reader supports |
 
 ## What changes in later stages
