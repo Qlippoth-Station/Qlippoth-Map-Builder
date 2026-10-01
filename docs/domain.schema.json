@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Qlippoth-Station/Qlippoth-Map-Builder/blob/main/docs/domain.schema.json",
+  "title": "Qlippoth domain file, version 1",
+  "description": "A rift domain made with the Qlippoth Domain Builder. See docs/format.md. Bounds of cell keys against width/height cannot be expressed here and must be checked separately.",
+  "type": "object",
+  "required": ["format", "version", "width", "height", "layers"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "qlippoth-domain" },
+    "version": { "const": 1 },
+    "name": { "type": "string" },
+    "width": { "type": "integer", "minimum": 1, "maximum": 256 },
+    "height": { "type": "integer", "minimum": 1, "maximum": 256 },
+    "layers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "floor": { "$ref": "#/$defs/layer" },
+        "structure": { "$ref": "#/$defs/layer" },
+        "object": { "$ref": "#/$defs/layer" },
+        "marker": {
+          "$ref": "#/$defs/layer",
+          "additionalProperties": {
+            "properties": { "id": { "enum": ["Entry", "QlippothSpot", "Objective", "Connection"] } }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "layer": {
+      "type": "object",
+      "propertyNames": { "pattern": "^(0|[1-9][0-9]*),(0|[1-9][0-9]*)$" },
+      "additionalProperties": { "$ref": "#/$defs/brush" }
+    },
+    "brush": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "fixed" },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

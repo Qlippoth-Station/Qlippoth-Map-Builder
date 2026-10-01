@@ -13,7 +13,25 @@ Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved 
 4. Place one **Entry** and one **Qlippoth spot** marker. The *Checks* panel lists anything that is missing.
 5. **Save** downloads a `.domain.json` file. Open it again later or add it to a pull request.
 
-Press `?` in the editor for all shortcuts.
+Press `?` in the editor for all shortcuts. The [user guide](docs/user-guide.md) covers everything in detail.
+
+## Getting a domain into the game
+
+Domain files are loaded by a `QlippothDungeon` implementation called `RecipeDungeon`, selected in a Qlippoth's
+prototype:
+
+```yaml
+- type: Qlippoth
+  dungeon: !type:RecipeDungeon
+    path: /Domains/yellow_palace.domain.json
+```
+
+`RecipeDungeon` is not in the game yet (stage 4). [docs/game-integration.md](docs/game-integration.md) has the
+reference implementation, the YAML options, how to test a domain in game and an integration test for the game's CI.
+
+## Documentation
+
+See [docs/](docs/README.md): user guide, game integration, file format and JSON Schema, palette builder, architecture.
 
 ## Roadmap
 
@@ -50,7 +68,7 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | `src/editor.ts` | Editor state, edits, undo/redo, checks |
 | `src/view.ts` | Canvas rendering, camera and tool input |
 | `src/ui.ts` | Side panels and top bar |
-| `docs/format.md` | File format reference |
+| `docs/` | User guide, game integration, file format, palette, architecture |
 
 ## Licenses
 
