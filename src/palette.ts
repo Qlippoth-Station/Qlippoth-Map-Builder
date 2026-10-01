@@ -40,7 +40,12 @@ export async function loadPalette(): Promise<Palette> {
   const atlasUrl = `${BASE}atlas.png`;
   const atlas = new Image();
   atlas.src = atlasUrl;
-  await atlas.decode();
+  // Not decode(): for an image this size it can stay pending forever while the tab is in the background.
+  await new Promise<void>((resolve, reject) => {
+    if (atlas.complete && atlas.naturalWidth > 0) return resolve();
+    atlas.addEventListener("load", () => resolve(), { once: true });
+    atlas.addEventListener("error", () => reject(new Error(`${atlasUrl} could not be loaded`)), { once: true });
+  });
 
   const items: PaletteItem[] = [...data.items, ...MARKERS];
   const byLayer = Object.fromEntries(LAYERS.map((layer) => [layer, new Map<string, PaletteItem>()])) as Palette["byLayer"];

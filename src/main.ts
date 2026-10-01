@@ -52,10 +52,12 @@ function start(palette: Palette): void {
   const view = new MapView(editor, stage);
   const hoverText = h("span", { class: "hover" }, "");
   const stateText = h("span", { class: "state" });
+  const selectionText = h("span", { class: "selection-info" });
   clear(
     status,
     hoverText,
     h("span", { class: "spacer" }),
+    selectionText,
     stateText,
     h("span", { class: "commit", title: "Game commit the palette was built from" }, palette.gameCommit ? `palette @ ${palette.gameCommit.slice(0, 8)}` : "palette")
   );
@@ -161,6 +163,10 @@ function start(palette: Palette): void {
       ...TOOLS.map((tool): [string, string] => [TOOL_INFO[tool].key, TOOL_INFO[tool].name]),
       ...LAYERS.map((layer, index): [string, string] => [String(index + 1), `${LAYER_NAMES[layer]} layer`]),
       ["Right click", "Pick item under cursor"],
+      ["Drag inside selection", "Move the selection and its contents"],
+      ["Arrows / Shift+Arrows", "Move the selection by 1 / 5 cells"],
+      ["Delete", "Clear the selected area on every layer"],
+      ["Esc", "Drop the selection"],
       ["Space + drag / Middle drag", "Pan"],
       ["Wheel", "Zoom"],
       ["0", "Fit to view"],
@@ -211,6 +217,10 @@ function start(palette: Palette): void {
 
   let autosaveTimer = 0;
   editor.subscribe((topics) => {
+    if (topics.has("view") || topics.has("document")) {
+      const rect = editor.selection;
+      selectionText.textContent = rect ? `selection ${rect.w}×${rect.h} at ${rect.x}, ${rect.y}` : "";
+    }
     if (topics.has("history") || topics.has("cells") || topics.has("document")) {
       stateText.textContent = editor.dirty ? "Unsaved changes (autosaved in this browser)" : "No unsaved changes";
       window.clearTimeout(autosaveTimer);
@@ -244,6 +254,26 @@ function start(palette: Palette): void {
       return;
     }
     if (isTyping(event) || event.altKey) return;
+
+    // Selection keys: arrows move it with its contents, Delete clears it, Escape drops it.
+    if (editor.selection) {
+      const step = event.shiftKey ? 5 : 1;
+      const arrows: Record<string, [number, number]> = {
+        arrowleft: [-step, 0],
+        arrowright: [step, 0],
+        arrowup: [0, step],
+        arrowdown: [0, -step],
+      };
+      if (arrows[key]) {
+        event.preventDefault();
+        return editor.moveSelection(...arrows[key]);
+      }
+      if (key === "delete" || key === "backspace") {
+        event.preventDefault();
+        return editor.clearSelection();
+      }
+      if (key === "escape") return editor.setSelection(null);
+    }
 
     const tool = TOOLS.find((id) => TOOL_INFO[id].key.toLowerCase() === key);
     if (tool) return editor.setTool(tool);

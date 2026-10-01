@@ -252,6 +252,10 @@ select {
   touch-action: none;
 }
 
+.map-canvas.move-ready {
+  cursor: move;
+}
+
 .map-canvas.pan-ready {
   cursor: grab;
 }

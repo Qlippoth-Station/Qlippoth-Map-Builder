@@ -10,6 +10,8 @@ Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved 
 1. Pick a layer (Floor, Structure, Object, Marker).
 2. Pick an item from the palette on the right.
 3. Paint with Brush, Rectangle or Fill. Right click picks what is under the cursor.
+   With **Select**, drag a rectangle; dragging from inside it moves that area together with its contents on every layer.
+   Arrow keys move it too (Shift for 5 cells), Delete clears it, Esc drops it.
 4. Place one **Entry** and one **Qlippoth spot** marker. The *Checks* panel lists anything that is missing.
 5. **Save** downloads a `.domain.json` file. Open it again later or add it to a pull request.
 
