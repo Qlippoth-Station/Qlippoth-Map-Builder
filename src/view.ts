@@ -1,5 +1,5 @@
 import { LAYERS, inBounds, type Brush, type LayerId } from "./document";
-import type { Editor } from "./editor";
+import { clampRect, rectContains, type Editor, type Rect } from "./editor";
 import { iconOrigin } from "./palette";
 
 const BASE_CELL = 32;
@@ -21,6 +21,8 @@ export class MapView {
     | { kind: "pan"; startX: number; startY: number; originX: number; originY: number }
     | { kind: "paint"; last: [number, number]; brush: Brush | null }
     | { kind: "rect"; start: [number, number]; brush: Brush | null }
+    | { kind: "select"; start: [number, number] }
+    | { kind: "move"; start: [number, number]; origin: Rect; contents: { layer: LayerId; dx: number; dy: number; brush: Brush }[] }
     | null = null;
 
   /** Called when the hovered cell changes, for the status bar. */
@@ -121,15 +123,27 @@ export class MapView {
     const maxY = Math.min(doc.height - 1, doc.height - 1 - Math.floor(-this.offsetY / cell));
     const minY = Math.max(0, doc.height - 1 - Math.floor((viewHeight - this.offsetY) / cell));
 
+    // While a selection is being dragged its cells are drawn at the new place instead of the old one.
+    const lifted = this.drag?.kind === "move" ? this.drag.origin : null;
     for (const layer of LAYERS) {
       if (!editor.visible[layer]) continue;
       ctx.globalAlpha = editor.dimInactive && layer !== editor.activeLayer ? 0.3 : 1;
       const cells = doc.layers[layer];
       for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
+          if (lifted && rectContains(lifted, x, y)) continue;
           const brush = cells.get(`${x},${y}`);
           if (brush) this.drawBrush(layer, brush, ...this.cellToScreen(x, y), cell);
         }
+      }
+    }
+
+    const preview = this.movePreview();
+    if (preview && this.drag?.kind === "move") {
+      for (const { layer, dx, dy, brush } of this.drag.contents) {
+        if (!editor.visible[layer]) continue;
+        ctx.globalAlpha = editor.dimInactive && layer !== editor.activeLayer ? 0.3 : 1;
+        this.drawBrush(layer, brush, ...this.cellToScreen(preview.x + dx, preview.y + dy), cell);
       }
     }
     ctx.globalAlpha = 1;
@@ -196,9 +210,70 @@ export class MapView {
     ctx.stroke();
   }
 
+  /** Where the dragged selection would land, clamped to the map. */
+  private movePreview(): Rect | null {
+    const drag = this.drag;
+    if (drag?.kind !== "move" || !this.hover) return null;
+    return clampRect(
+      { ...drag.origin, x: drag.origin.x + this.hover[0] - drag.start[0], y: drag.origin.y + this.hover[1] - drag.start[1] },
+      this.editor.doc.width,
+      this.editor.doc.height
+    );
+  }
+
+  /** The rectangle the Select tool shows right now: the live drag, the dragged copy, or the stored selection. */
+  private currentSelection(): Rect | null {
+    const drag = this.drag;
+    if (drag?.kind === "select" && this.hover) {
+      const [x0, y0] = drag.start;
+      const [x1, y1] = this.hover;
+      return clampRect(
+        { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0) + 1, h: Math.abs(y1 - y0) + 1 },
+        this.editor.doc.width,
+        this.editor.doc.height
+      );
+    }
+    return this.movePreview() ?? this.editor.selection;
+  }
+
+  private drawSelection(rect: Rect, accent: string): void {
+    const { ctx } = this;
+    const cell = this.cellSize;
+    const [sx, sy] = this.cellToScreen(rect.x, rect.y + rect.h - 1);
+    const w = rect.w * cell;
+    const h = rect.h * cell;
+
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = 0.1;
+    ctx.fillRect(sx, sy, w, h);
+    ctx.globalAlpha = 1;
+
+    ctx.save();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(sx + 1, sy + 1, w - 2, h - 2);
+    ctx.restore();
+  }
+
   private drawOverlay(accent: string): void {
     const { ctx, editor } = this;
     const cell = this.cellSize;
+
+    const selection = this.currentSelection();
+    if (selection) this.drawSelection(selection, accent);
+
+    if (editor.tool === "select") {
+      if (this.hover && !this.drag) {
+        const [sx, sy] = this.cellToScreen(...this.hover);
+        ctx.strokeStyle = accent;
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx + 0.5, sy + 0.5, cell - 1, cell - 1);
+        ctx.globalAlpha = 1;
+      }
+      return;
+    }
 
     if (this.drag?.kind === "rect" && this.hover) {
       const [x0, y0] = this.drag.start;
@@ -262,6 +337,14 @@ export class MapView {
       const layer = editor.activeLayer;
       const brush = editor.tool === "erase" ? null : editor.selectedBrush();
       switch (editor.tool) {
+        case "select":
+          // Starting inside the selection moves it with its contents; anywhere else starts a new selection.
+          if (editor.selection && rectContains(editor.selection, ...cell)) {
+            this.drag = { kind: "move", start: cell, origin: editor.selection, contents: editor.selectionContents() };
+          } else {
+            this.drag = { kind: "select", start: cell };
+          }
+          break;
         case "pick":
           this.pick(...cell);
           break;
@@ -296,6 +379,9 @@ export class MapView {
         drag.last = cell;
       }
 
+      const overSelection = this.editor.tool === "select" && this.editor.selection && rectContains(this.editor.selection, ...cell);
+      canvas.classList.toggle("move-ready", !!overSelection);
+
       if (!this.hover || this.hover[0] !== cell[0] || this.hover[1] !== cell[1]) {
         this.hover = cell;
         this.onHover(inBounds(this.editor.doc, ...cell) ? cell : null);
@@ -309,6 +395,18 @@ export class MapView {
       canvas.classList.remove("panning");
       if (drag?.kind === "paint") this.editor.endStroke();
       if (drag?.kind === "rect" && this.hover) this.editor.fillRect(this.editor.activeLayer, ...drag.start, ...this.hover, drag.brush);
+      if (drag?.kind === "select" && this.hover) {
+        const [x0, y0] = drag.start;
+        const [x1, y1] = this.hover;
+        // A click without dragging clears the selection.
+        const click = x0 === x1 && y0 === y1 && this.editor.selection;
+        this.editor.setSelection(
+          click ? null : { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0) + 1, h: Math.abs(y1 - y0) + 1 }
+        );
+      }
+      if (drag?.kind === "move" && this.hover) {
+        this.editor.moveSelection(this.hover[0] - drag.start[0], this.hover[1] - drag.start[1]);
+      }
       this.invalidate();
     };
     canvas.addEventListener("pointerup", finish);

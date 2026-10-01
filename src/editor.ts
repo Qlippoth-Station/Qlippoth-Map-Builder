@@ -11,7 +11,7 @@ import {
 } from "./document";
 import type { Palette } from "./palette";
 
-export const TOOLS = ["brush", "rect", "fill", "erase", "pick"] as const;
+export const TOOLS = ["brush", "rect", "fill", "erase", "pick", "select"] as const;
 export type ToolId = (typeof TOOLS)[number];
 
 export const TOOL_INFO: Record<ToolId, { name: string; key: string; hint: string }> = {
@@ -20,7 +20,20 @@ export const TOOL_INFO: Record<ToolId, { name: string; key: string; hint: string
   fill: { name: "Fill", key: "F", hint: "Fill the connected area of the same content" },
   erase: { name: "Erase", key: "E", hint: "Clear cells on the active layer" },
   pick: { name: "Pick", key: "I", hint: "Pick the item under the cursor (also right click)" },
+  select: { name: "Select", key: "S", hint: "Drag a rectangle; drag inside it to move it with its contents" },
 };
+
+/** A rectangular selection in grid coordinates, bottom-left origin. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export function rectContains(rect: Rect, x: number, y: number): boolean {
+  return x >= rect.x && y >= rect.y && x < rect.x + rect.w && y < rect.y + rect.h;
+}
 
 /** What changed, so views only redo the work they need. */
 export type Topic = "cells" | "document" | "selection" | "view" | "history";
@@ -43,6 +56,8 @@ export class Editor {
   visible: Record<LayerId, boolean> = { floor: true, structure: true, object: true, marker: true };
   dimInactive = false;
   showGrid = true;
+  /** Rectangle the Select tool works on. Moving it moves the cells inside it on every layer. */
+  selection: Rect | null = null;
   /** Increases on every edit; compared against the last saved value to know about unsaved work. */
   revision = 0;
   savedRevision = 0;
@@ -168,6 +183,61 @@ export class Editor {
     this.endStroke();
   }
 
+  // ---- Selection -------------------------------------------------------------------------------
+
+  setSelection(rect: Rect | null): void {
+    this.selection = rect && rect.w > 0 && rect.h > 0 ? clampRect(rect, this.doc.width, this.doc.height) : null;
+    this.emit("view");
+  }
+
+  /** Cells of every layer inside the selection, keyed by their offset from the selection origin. */
+  selectionContents(): { layer: LayerId; dx: number; dy: number; brush: Brush }[] {
+    const rect = this.selection;
+    if (!rect) return [];
+    const contents: { layer: LayerId; dx: number; dy: number; brush: Brush }[] = [];
+    for (const layer of LAYERS) {
+      for (let y = rect.y; y < rect.y + rect.h; y++) {
+        for (let x = rect.x; x < rect.x + rect.w; x++) {
+          const brush = this.get(layer, x, y);
+          if (brush) contents.push({ layer, dx: x - rect.x, dy: y - rect.y, brush });
+        }
+      }
+    }
+    return contents;
+  }
+
+  /**
+   * Moves the selection together with everything inside it, on every layer.
+   * The move is clamped to the map, so nothing is lost off the edge, and lands as one undo step.
+   */
+  moveSelection(dx: number, dy: number): void {
+    const rect = this.selection;
+    if (!rect) return;
+    const target = clampRect({ ...rect, x: rect.x + dx, y: rect.y + dy }, this.doc.width, this.doc.height);
+    if (target.x === rect.x && target.y === rect.y) return;
+
+    const contents = this.selectionContents();
+    this.beginStroke();
+    for (let y = rect.y; y < rect.y + rect.h; y++) {
+      for (let x = rect.x; x < rect.x + rect.w; x++) for (const layer of LAYERS) this.set(layer, x, y, null);
+    }
+    for (const { layer, dx: ox, dy: oy, brush } of contents) this.set(layer, target.x + ox, target.y + oy, brush);
+    this.endStroke();
+    this.selection = target;
+    this.emit("view");
+  }
+
+  /** Clears every layer inside the selection. */
+  clearSelection(): void {
+    const rect = this.selection;
+    if (!rect) return;
+    this.beginStroke();
+    for (let y = rect.y; y < rect.y + rect.h; y++) {
+      for (let x = rect.x; x < rect.x + rect.w; x++) for (const layer of LAYERS) this.set(layer, x, y, null);
+    }
+    this.endStroke();
+  }
+
   /** Resizes around the bottom-left origin; cells that fall outside are removed (and come back on undo). */
   resize(width: number, height: number): void {
     const after: [number, number] = [clampSize(width), clampSize(height)];
@@ -185,6 +255,7 @@ export class Editor {
     this.apply(change);
     this.stroke!.push(change);
     this.endStroke();
+    this.setSelection(this.selection);
   }
 
   rename(name: string): void {
@@ -225,6 +296,7 @@ export class Editor {
   replaceDocument(doc: DomainDocument): void {
     this.stroke = null;
     this.doc = doc;
+    this.selection = null;
     this.undoStack = [];
     this.redoStack = [];
     this.revision++;
@@ -287,6 +359,18 @@ export class Editor {
     }
     return warnings;
   }
+}
+
+/** Keeps a rectangle inside the map, shrinking it only when it is larger than the map itself. */
+export function clampRect(rect: Rect, width: number, height: number): Rect {
+  const w = Math.min(rect.w, width);
+  const h = Math.min(rect.h, height);
+  return {
+    x: Math.min(Math.max(0, rect.x), width - w),
+    y: Math.min(Math.max(0, rect.y), height - h),
+    w,
+    h,
+  };
 }
 
 function invert(change: Change): Change {
