@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# Generated from the game repo by `npm run palette`; CI regenerates it on every deploy.
+public/palette/
+.DS_Store
+Thumbs.db
