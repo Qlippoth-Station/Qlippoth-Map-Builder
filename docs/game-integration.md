@@ -6,7 +6,8 @@ This guide explains how `.domain.json` files made in the editor become rift dime
 > the game cannot load `.domain.json` files today. This page explains how the game builds rifts now, where
 > domain files plug in, and gives a reference implementation (`RecipeDungeon`) to add to the game repository.
 > The C# below follows the game code at commit `f2e572d`, but it has not been compiled or tested yet. Treat it as
-> a starting point for the game-side pull request, not as finished code.
+> a starting point for the game-side pull request, not as finished code. The work is split into ordered steps with
+> a "done when" for each in [game-side-tasks.md](game-side-tasks.md).
 
 ## Contents
 

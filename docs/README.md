@@ -4,6 +4,7 @@
 |---|---|---|
 | [user-guide.md](user-guide.md) | Domain makers | Layers, tools, markers, checks, shortcuts, saving |
 | [game-integration.md](game-integration.md) | Game developers, domain makers | How a `.domain.json` becomes a rift in the game; `RecipeDungeon` reference implementation, YAML, testing |
+| [game-side-tasks.md](game-side-tasks.md) | Game developers | Step-by-step to-do list for the game repository: what to add, in which order, and when each step is done |
 | [format.md](format.md) | Anyone reading or writing files | File format reference, version 1 |
 | [domain.schema.json](domain.schema.json) | Tools and CI | JSON Schema for version 1 files |
 | [atmosphere.md](atmosphere.md) | Game and editor developers | Proposal: choosing a domain's air in the editor, storing it in the file and applying it in the game |
@@ -17,4 +18,5 @@
 3. Put it in the game repository under `Resources/Domains/` ([game-integration.md](game-integration.md#step-1-put-the-file-in-the-game-repository)).
 4. Point a Qlippoth at it with `dungeon: !type:RecipeDungeon` ([step 3](game-integration.md#step-3-point-a-qlippoth-at-the-file)).
 
-Step 4 needs the game-side `RecipeDungeon`, which is not in the game yet; [step 2](game-integration.md#step-2-add-recipedungeon-to-the-game) of the integration guide has the code to add it.
+Step 4 needs the game-side `RecipeDungeon`, which is not in the game yet; [step 2](game-integration.md#step-2-add-recipedungeon-to-the-game) of the integration guide has the code to add it,
+and [game-side-tasks.md](game-side-tasks.md) lists the whole game-side work in order.

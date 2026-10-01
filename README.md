@@ -30,6 +30,7 @@ prototype:
 
 `RecipeDungeon` is not in the game yet (stage 4). [docs/game-integration.md](docs/game-integration.md) has the
 reference implementation, the YAML options, how to test a domain in game and an integration test for the game's CI.
+[docs/game-side-tasks.md](docs/game-side-tasks.md) is the step-by-step to-do list for that game-side work.
 
 ## Documentation
 
