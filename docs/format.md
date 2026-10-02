@@ -102,6 +102,9 @@ A random list is its own file, `<id>.list.json`, so it can be shared, reused by 
 requests next to them. In the game repository list files live in `Resources/Domains/Lists/`.
 Schema: [list.schema.json](list.schema.json).
 
+**Built-in lists** are the list files in `lists/` of the editor repository. They ship with the editor, cannot be
+changed there, and their ids cannot be used by other lists (see [lists/README.md](../lists/README.md)).
+
 ```json
 {
   "format": "qlippoth-list",
@@ -117,15 +120,28 @@ Schema: [list.schema.json](list.schema.json).
 }
 ```
 
+Version 2 of the list format adds the empty choice and symbol icons:
+
+```json
+"icon": { "symbol": "crate", "glyph": "C", "color": "#8a6a3a" },
+"entries": [
+  { "id": "CrateGenericSteel", "weight": 1 },
+  { "empty": true, "weight": 2 }
+]
+```
+
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `format` | string | yes | Always `"qlippoth-list"` |
-| `version` | integer | yes | List format version, `1` |
+| `version` | integer | yes | List format version: `1`, or `2` when the list has an empty choice or a symbol. The editor writes the lowest that fits |
 | `id` | string | yes | Lowercase snake_case. Must match the file name. Domains refer to the list by it |
 | `name` | string | no | Display name in the editor |
 | `layer` | string | yes | `floor` (entries are tile ids), `structure` or `object` (entries are entity ids). A list is only used on its layer |
-| `icon` | object | no | `glyph` (1–2 characters) and `color` (`#rrggbb`): how list cells are drawn in the editor. The game ignores it |
-| `entries` | array | yes | The items to pick from, in order. `weight` is a whole number from 1 to 1000 (default 1); an entry with weight 3 is picked three times as often as one with weight 1 |
+| `icon` | object | no | How list cells are drawn in the editor; the game ignores it. `glyph`: 1–2 characters, `color`: `#rrggbb`, `symbol` (version 2): file name of an image in the editor's `assets/list-symbols/`, shown instead of the glyph when it exists |
+| `entries` | array | yes | The choices, in order. Each is `{ "id": ..., "weight": ... }` (a tile or entity id) or, in version 2, at most one `{ "empty": true, "weight": ... }` that leaves the cell empty. `weight` is a whole number from 1 to 1000 (default 1); an entry with weight 3 is picked three times as often as one with weight 1 |
+
+List format versions: `1` (editor 0.2.0) holds items only; `2` (editor 0.3.0) adds the empty choice and `icon.symbol`.
+Readers must reject list versions newer than they know, like domain versions.
 
 ## Not stored
 

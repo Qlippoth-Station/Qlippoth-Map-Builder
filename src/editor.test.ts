@@ -194,3 +194,37 @@ describe("random lists", () => {
     expect(messages(e)).toEqual(["Marker inside a wall."]);
   });
 });
+
+describe("built-in lists and the empty choice", () => {
+  const builtIn = { ...createList("strong_walls", "Strong walls", "structure"), entries: [{ id: "WallSolid", weight: 1 }] };
+
+  it("cannot be replaced or removed, and are not part of the user's lists", () => {
+    const e = editor();
+    e.addBuiltInLists([builtIn]);
+    expect(e.setList({ ...builtIn, name: "Changed" })).toBe(false);
+    e.removeList("strong_walls");
+    expect(e.lists.get("strong_walls")).toMatchObject({ name: "Strong walls", builtIn: true });
+    expect(e.setList(createList("mine", "Mine", "floor"))).toBe(true);
+    expect(e.userLists().map((list) => list.id)).toEqual(["mine"]);
+  });
+
+  it("never turns a user list into a built-in one", () => {
+    const e = editor();
+    e.setList({ ...createList("sneaky", "Sneaky", "floor"), builtIn: true });
+    expect(e.lists.get("sneaky")?.builtIn).toBe(false);
+    e.removeList("sneaky");
+    expect(e.lists.has("sneaky")).toBe(false);
+  });
+
+  it("checks a list that only has the empty choice and ignores the empty choice in id checks", () => {
+    const e = editor();
+    e.fillRect("floor", 0, 0, 4, 4, floor);
+    e.set("marker", 0, 0, fixedBrush("Entry"));
+    e.set("marker", 1, 0, fixedBrush("QlippothSpot"));
+    e.setList({ ...createList("nothing", "Nothing", "object"), entries: [{ id: null, weight: 1 }] });
+    e.setList({ ...createList("maybe", "Maybe", "object"), entries: [{ id: "Table", weight: 1 }, { id: null, weight: 3 }] });
+    e.set("object", 2, 2, listBrush("nothing"));
+    e.set("object", 3, 3, listBrush("maybe"));
+    expect(messages(e)).toEqual(['List "Nothing" only has the empty choice.']);
+  });
+});

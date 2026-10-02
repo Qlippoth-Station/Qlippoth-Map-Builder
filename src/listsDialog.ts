@@ -6,7 +6,12 @@ import { clear, h } from "./dom";
 import {
   LIST_LAYERS,
   MAX_WEIGHT,
+  chances,
   createList,
+  equalChances,
+  hasEmptyChoice,
+  setEntryChance,
+  type ListEntry,
   listFileName,
   parseList,
   sameList,
@@ -16,8 +21,14 @@ import {
   type TileList,
 } from "./lists";
 import { icon, listIcon } from "./ui";
+import { SYMBOLS } from "./assets";
 
 const SEARCH_LIMIT = 60;
+
+/** 62.5 -> "62.5", 50 -> "50". */
+function formatChance(percent: number): string {
+  return String(Math.round(percent * 10) / 10);
+}
 
 export interface ListsDialogHelpers {
   download(fileName: string, text: string): void;
@@ -35,7 +46,11 @@ export async function importListFiles(editor: Editor, files: File[]): Promise<st
       const list = parseList(await file.text());
       const existing = editor.lists.get(list.id);
       if (existing && sameList(existing, list)) {
-        report.push(`${file.name}: already loaded.`);
+        report.push(`${file.name}: already loaded${existing.builtIn ? " (built in)" : ""}.`);
+        continue;
+      }
+      if (existing?.builtIn) {
+        report.push(`${file.name}: "${list.id}" is a built-in list and cannot be replaced. Give the list another id to import it.`);
         continue;
       }
       if (existing && !window.confirm(`A different list with the id "${list.id}" (${existing.name}) is already loaded. Replace it with ${file.name}?`)) {
@@ -54,7 +69,7 @@ export async function importListFiles(editor: Editor, files: File[]): Promise<st
 /** Renders the dialog body into `host` and keeps it up to date while the dialog is open. */
 export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: ListsDialogHelpers, isOpen: () => boolean): void {
   const palette = editor.palette;
-  const firstForLayer = [...editor.lists.values()].find((list) => list.layer === editor.activeLayer);
+  const firstForLayer = editor.userLists().find((list) => list.layer === editor.activeLayer) ?? [...editor.lists.values()].find((list) => list.layer === editor.activeLayer);
   let currentId: string | null = firstForLayer?.id ?? editor.lists.keys().next().value ?? null;
   let query = "";
   let message = "";
@@ -89,36 +104,148 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
     render();
   };
 
+  const select = (id: string) => {
+    currentId = id;
+    query = "";
+    render();
+  };
+
+  const duplicate = (list: TileList) => {
+    const name = `${list.name} (copy)`;
+    const copy: TileList = { ...list, id: uniqueListId(name, editor.lists.keys()), name, builtIn: false, entries: list.entries.map((entry) => ({ ...entry })) };
+    editor.setList(copy);
+    select(copy.id);
+  };
+
   const renderSidebar = () => {
-    const lists = [...editor.lists.values()].sort((a, b) => a.layer.localeCompare(b.layer) || a.name.localeCompare(b.name));
-    if (lists.length === 0) return h("p", { class: "muted small" }, "No lists yet. Create one or import .list.json files.");
+    const sorted = [...editor.lists.values()].sort((a, b) => a.layer.localeCompare(b.layer) || a.name.localeCompare(b.name));
+    if (sorted.length === 0) return h("p", { class: "muted small" }, "No lists yet. Create one or import .list.json files.");
+    const button = (list: TileList) =>
+      h(
+        "button",
+        { type: "button", class: `palette-item${list.id === currentId ? " active" : ""}`, onclick: () => select(list.id) },
+        listIcon(list),
+        h("span", { class: "palette-name" }, list.name, h("small", {}, ` · ${LAYER_NAMES[list.layer]} · ${list.entries.length}`))
+      );
+    const builtIn = sorted.filter((list) => list.builtIn);
+    const mine = sorted.filter((list) => !list.builtIn);
     return h(
       "div",
       { class: "list-index" },
-      ...lists.map((list) =>
-        h(
-          "button",
-          {
-            type: "button",
-            class: `palette-item${list.id === currentId ? " active" : ""}`,
-            onclick: () => {
-              currentId = list.id;
-              query = "";
-              render();
+      builtIn.length ? h("h3", { title: "Part of the game; read-only" }, "🔒 Built in") : null,
+      ...builtIn.map(button),
+      h("h3", {}, "My lists"),
+      ...(mine.length ? mine.map(button) : [h("p", { class: "muted small" }, "None yet.")])
+    );
+  };
+
+  const renderSymbols = (list: TileList, locked: boolean) => {
+    const option = (symbol: string | undefined, label: string, content: HTMLElement) =>
+      h(
+        "button",
+        {
+          type: "button",
+          class: `symbol-option${list.symbol === symbol ? " active" : ""}`,
+          title: label,
+          "aria-pressed": String(list.symbol === symbol),
+          disabled: locked,
+          onclick: () => update(list, symbol ? { symbol } : { symbol: undefined }),
+        },
+        content
+      );
+    return h(
+      "div",
+      { class: "field" },
+      h("span", {}, "Symbol"),
+      h(
+        "div",
+        { class: "symbol-grid" },
+        option(undefined, `Letter: ${list.glyph}`, listIcon({ ...list, symbol: undefined })),
+        ...SYMBOLS.map((symbol) => option(symbol.id, symbol.name, listIcon({ ...list, symbol: symbol.id }))),
+        SYMBOLS.length === 0 ? h("span", { class: "muted small" }, "No symbols yet: add images to assets/list-symbols/.") : null
+      )
+    );
+  };
+
+  const renderEntries = (list: TileList, locked: boolean) => {
+    const items = palette.byLayer[list.layer];
+    if (list.entries.length === 0) return h("p", { class: "muted small" }, locked ? "Empty." : "Empty. Search below and click items to add them.");
+
+    // While a slider is dragged the other rows follow live; the list is only saved when it is released.
+    const rows: { range: HTMLInputElement; number: HTMLInputElement }[] = [];
+    const show = (entries: ListEntry[]) =>
+      chances(entries).forEach((chance, i) => {
+        rows[i].range.value = String(chance);
+        if (document.activeElement !== rows[i].number) rows[i].number.value = formatChance(chance);
+      });
+    const percents = chances(list.entries);
+    const single = list.entries.length === 1;
+
+    return h(
+      "table",
+      { class: "entries" },
+      h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "Item"), h("th", { colspan: 2 }, "Chance"), h("th", {}, ""))),
+      h(
+        "tbody",
+        {},
+        ...list.entries.map((entry, index) => {
+          const range = h("input", {
+            type: "range",
+            min: 0.1,
+            max: 99.9,
+            step: 0.1,
+            value: String(percents[index]),
+            class: "chance-range",
+            disabled: locked || single,
+            "aria-label": `Chance of ${entry.id ?? "nothing"}`,
+            oninput: () => show(setEntryChance(list.entries, index, Number(range.value))),
+            onchange: () => update(list, { entries: setEntryChance(list.entries, index, Number(range.value)) }),
+          });
+          const number = h("input", {
+            type: "number",
+            min: 0.1,
+            max: 99.9,
+            step: 0.1,
+            value: formatChance(percents[index]),
+            class: "chance-number",
+            disabled: locked || single,
+            "aria-label": `Chance of ${entry.id ?? "nothing"} in percent`,
+            onchange: () => {
+              const value = Number(number.value);
+              if (Number.isFinite(value)) update(list, { entries: setEntryChance(list.entries, index, value) });
             },
-          },
-          listIcon(list),
-          h("span", { class: "palette-name" }, list.name, h("small", {}, ` · ${LAYER_NAMES[list.layer]} · ${list.entries.length}`))
-        )
+          });
+          rows.push({ range, number });
+          const item = entry.id === null ? undefined : items.get(entry.id);
+          return h(
+            "tr",
+            { class: entry.id === null ? "empty-choice" : "" },
+            h("td", {}, entry.id === null ? h("span", { class: "icon glyph empty-icon", title: "Nothing" }, "∅") : icon(palette, item, entry.id)),
+            entry.id === null
+              ? h("td", {}, h("div", {}, "Nothing"), h("code", {}, "the cell stays empty"))
+              : h("td", {}, h("div", {}, item?.name ?? "Unknown id"), h("code", {}, entry.id)),
+            h("td", { class: "chance-cell" }, range),
+            h("td", { class: "chance-cell" }, number, h("span", { class: "muted" }, " %")),
+            h(
+              "td",
+              {},
+              locked
+                ? null
+                : h("button", { type: "button", class: "ghost", title: "Remove", onclick: () => update(list, { entries: list.entries.filter((_, i) => i !== index) }) }, "✕")
+            )
+          );
+        })
       )
     );
   };
 
   const renderEditor = (list: TileList) => {
+    const locked = !!list.builtIn;
     const items = palette.byLayer[list.layer];
-    const total = list.entries.reduce((sum, entry) => sum + entry.weight, 0);
     const search = h("input", { type: "search", placeholder: `Add ${LAYER_NAMES[list.layer].toLowerCase()} items: search name or id`, value: query, class: "list-search" });
     const results = h("div", { class: "list-results" });
+    // A new entry starts with an average share, not with the smallest one.
+    const newWeight = () => (list.entries.length ? Math.min(MAX_WEIGHT, Math.max(1, Math.round(list.entries.reduce((sum, entry) => sum + entry.weight, 0) / list.entries.length))) : 1);
     const renderResults = () => {
       const q = query.trim().toLowerCase();
       if (!q) return clear(results);
@@ -129,7 +256,7 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
         ...matches.slice(0, SEARCH_LIMIT).map((item) =>
           h(
             "button",
-            { type: "button", class: "palette-item", title: item.id, onclick: () => update(list, { entries: [...list.entries, { id: item.id, weight: 1 }] }) },
+            { type: "button", class: "palette-item", title: item.id, onclick: () => update(list, { entries: [...list.entries, { id: item.id, weight: newWeight() }] }) },
             icon(palette, item),
             h("span", { class: "palette-name" }, item.name)
           )
@@ -146,17 +273,32 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
     return h(
       "div",
       { class: "list-editor" },
+      locked
+        ? h(
+            "p",
+            { class: "small notice locked" },
+            "🔒 Built-in list: part of the game, so it cannot be changed here. ",
+            h("button", { type: "button", class: "secondary", onclick: () => duplicate(list) }, "Duplicate as my list"),
+            " to make your own version."
+          )
+        : null,
       h(
         "div",
         { class: "row" },
-        h("label", { class: "field grow" }, h("span", {}, "Name"), h("input", { value: list.name, onchange: (event: Event) => update(list, { name: (event.target as HTMLInputElement).value.trim() || list.name }) })),
         h(
           "label",
-          { class: "field narrow" },
-          h("span", {}, "Icon"),
+          { class: "field grow" },
+          h("span", {}, "Name"),
+          h("input", { value: list.name, disabled: locked, onchange: (event: Event) => update(list, { name: (event.target as HTMLInputElement).value.trim() || list.name }) })
+        ),
+        h(
+          "label",
+          { class: "field narrow", title: "Shown when the list has no symbol" },
+          h("span", {}, "Letter"),
           h("input", {
             value: list.glyph,
             maxlength: 2,
+            disabled: locked,
             onchange: (event: Event) => update(list, { glyph: [...(event.target as HTMLInputElement).value.trim()].slice(0, 2).join("") || list.glyph }),
           })
         ),
@@ -164,7 +306,7 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
           "label",
           { class: "field narrow" },
           h("span", {}, "Color"),
-          h("input", { type: "color", value: list.color, onchange: (event: Event) => update(list, { color: (event.target as HTMLInputElement).value }) })
+          h("input", { type: "color", value: list.color, disabled: locked, onchange: (event: Event) => update(list, { color: (event.target as HTMLInputElement).value }) })
         ),
         h(
           "label",
@@ -173,74 +315,61 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
           h(
             "select",
             {
-              disabled: list.entries.length > 0,
+              disabled: locked || list.entries.length > 0,
               onchange: (event: Event) => update(list, { layer: (event.target as HTMLSelectElement).value as ListLayer }),
             },
             ...LIST_LAYERS.map((layer) => h("option", { value: layer, selected: layer === list.layer }, LAYER_NAMES[layer]))
           )
         )
       ),
+      renderSymbols(list, locked),
       h("p", { class: "muted small" }, "File: ", h("code", {}, listFileName(list)), ". Domains refer to the list by this id."),
       h("h3", {}, `Entries (${list.entries.length})`),
-      list.entries.length === 0
-        ? h("p", { class: "muted small" }, "Empty. Search below and click items to add them.")
+      renderEntries(list, locked),
+      locked
+        ? null
         : h(
-            "table",
-            { class: "entries" },
-            h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "Item"), h("th", { title: "Relative chance" }, "Weight"), h("th", {}, "Chance"), h("th", {}, ""))),
+            "div",
+            { class: "entry-actions" },
             h(
-              "tbody",
-              {},
-              ...list.entries.map((entry, index) =>
-                h(
-                  "tr",
-                  {},
-                  h("td", {}, icon(palette, items.get(entry.id), entry.id)),
-                  h("td", {}, h("div", {}, items.get(entry.id)?.name ?? "Unknown id"), h("code", {}, entry.id)),
-                  h(
-                    "td",
-                    {},
-                    h("input", {
-                      type: "number",
-                      min: 1,
-                      max: MAX_WEIGHT,
-                      value: String(entry.weight),
-                      class: "weight",
-                      onchange: (event: Event) => {
-                        const weight = Math.min(MAX_WEIGHT, Math.max(1, Math.round(Number((event.target as HTMLInputElement).value)) || 1));
-                        update(list, { entries: list.entries.map((other, i) => (i === index ? { ...other, weight } : other)) });
-                      },
-                    })
-                  ),
-                  h("td", { class: "muted" }, `${Math.round((entry.weight / total) * 100)}%`),
-                  h(
-                    "td",
-                    {},
-                    h("button", { type: "button", class: "ghost", title: "Remove", onclick: () => update(list, { entries: list.entries.filter((_, i) => i !== index) }) }, "✕")
-                  )
-                )
-              )
+              "button",
+              {
+                type: "button",
+                class: "secondary",
+                disabled: hasEmptyChoice(list),
+                title: "Adds a choice that leaves the cell empty, e.g. a crate that is only there sometimes",
+                onclick: () => update(list, { entries: [...list.entries, { id: null, weight: newWeight() }] }),
+              },
+              "Add empty choice"
+            ),
+            h(
+              "button",
+              { type: "button", class: "secondary", disabled: list.entries.length < 2, onclick: () => update(list, { entries: equalChances(list.entries) }) },
+              "Equal chances"
             )
           ),
-      search,
-      results,
+      locked ? null : search,
+      locked ? null : results,
       h(
         "footer",
         {},
-        h(
-          "button",
-          {
-            type: "button",
-            class: "danger",
-            onclick: () => {
-              const used = editor.usedLists().has(list.id);
-              if (!window.confirm(`Remove "${list.name}" from this browser?${used ? " This domain uses it; its cells stay but show as not loaded." : ""}`)) return;
-              editor.removeList(list.id);
-              currentId = editor.lists.keys().next().value ?? null;
-            },
-          },
-          "Delete"
-        ),
+        locked
+          ? null
+          : h(
+              "button",
+              {
+                type: "button",
+                class: "danger",
+                onclick: () => {
+                  const used = editor.usedLists().has(list.id);
+                  if (!window.confirm(`Remove "${list.name}" from this browser?${used ? " This domain uses it; its cells stay but show as not loaded." : ""}`)) return;
+                  editor.removeList(list.id);
+                  currentId = editor.lists.keys().next().value ?? null;
+                },
+              },
+              "Delete"
+            ),
+        locked ? null : h("button", { type: "button", class: "secondary", onclick: () => duplicate(list) }, "Duplicate"),
         h("span", { class: "spacer" }),
         h("button", { type: "button", class: "primary", onclick: () => helpers.download(listFileName(list), serializeList(list)) }, "Export .list.json")
       )

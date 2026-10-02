@@ -712,10 +712,14 @@ button.danger:hover {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
 .seed-input {
-  width: 110px;
+  flex: 1;
+  min-width: 0;
+  width: 0;
 }
 
 .seed {
@@ -848,4 +852,76 @@ button.danger:hover {
 
 .list-editor .spacer {
   flex: 1;
+}
+
+.icon.list-icon.symbol {
+  display: inline-block;
+  background-size: 76%;
+  background-position: center;
+  background-repeat: no-repeat;
+  image-rendering: auto;
+}
+
+.list-index h3 {
+  margin: 8px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.list-index h3:first-child {
+  margin-top: 0;
+}
+
+.symbol-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.symbol-option {
+  display: inline-flex;
+  padding: 2px;
+  border-color: var(--border);
+}
+
+.symbol-option.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.chance-cell {
+  white-space: nowrap;
+}
+
+.chance-range {
+  width: 100%;
+  min-width: 120px;
+  accent-color: var(--accent);
+}
+
+.chance-number {
+  width: 68px;
+}
+
+.empty-icon {
+  background: repeating-linear-gradient(45deg, var(--canvas-empty) 0 4px, var(--panel-raised) 4px 8px);
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.notice.locked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }

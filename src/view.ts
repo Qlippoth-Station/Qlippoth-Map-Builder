@@ -1,6 +1,8 @@
 import { LAYERS, inBounds, type LayerId } from "./document";
 import { fixedBrush, type Brush } from "./brush";
 import type { TileList } from "./lists";
+import { GROUP_EFFECT_URL, loadedImage, symbolInfo } from "./assets";
+import { hash32 } from "./resolve";
 import { clampRect, rectContains, type Editor, type Rect } from "./editor";
 import { iconOrigin } from "./palette";
 
@@ -139,10 +141,16 @@ export class MapView {
           const key = `${x},${y}`;
           const brush = cells.get(key);
           if (!brush) continue;
-          const rolled = brush.kind === "list" ? resolved?.[layer].get(key) : undefined;
-          this.drawBrush(layer, rolled !== undefined ? fixedBrush(rolled) : brush, ...this.cellToScreen(x, y), cell);
+          if (brush.kind === "list" && resolved && editor.lists.has(brush.list)) {
+            // Preview of a loaded list: the rolled item, or nothing when the empty choice came up.
+            const rolled = resolved[layer].get(key);
+            if (rolled !== undefined) this.drawBrush(layer, fixedBrush(rolled), ...this.cellToScreen(x, y), cell);
+            continue;
+          }
+          this.drawBrush(layer, brush, ...this.cellToScreen(x, y), cell);
         }
       }
+      this.drawGroupOutlines(layer, minX, maxX, minY, maxY, lifted);
     }
 
     const preview = this.movePreview();
@@ -267,7 +275,42 @@ export class MapView {
     ctx.restore();
   }
 
-  /** A random list cell: the list's glyph on its color, dice dots in the corner and the group number if linked. */
+  /**
+   * Outlines every group of list cells ("same pick") in its own color, so neighbouring groups and the end of a group
+   * are visible. Only edges between a group cell and a cell outside that group are drawn.
+   */
+  private drawGroupOutlines(layer: LayerId, minX: number, maxX: number, minY: number, maxY: number, lifted: Rect | null): void {
+    const { ctx } = this;
+    const cells = this.editor.doc.layers[layer];
+    const cell = this.cellSize;
+    const groupOf = (x: number, y: number) => {
+      const brush = cells.get(`${x},${y}`);
+      return brush?.kind === "list" && brush.group !== undefined && !(lifted && rectContains(lifted, x, y)) ? `${brush.list}/${brush.group}` : null;
+    };
+    ctx.lineWidth = Math.max(1.5, cell * 0.07);
+    ctx.lineCap = "round";
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const group = groupOf(x, y);
+        if (!group) continue;
+        const [sx, sy] = this.cellToScreen(x, y);
+        const inset = ctx.lineWidth / 2;
+        ctx.strokeStyle = `hsl(${hash32(group) % 360} 85% 62%)`;
+        ctx.beginPath();
+        // Screen y grows downwards: the cell above (y + 1) is the top edge.
+        if (groupOf(x, y + 1) !== group) (ctx.moveTo(sx, sy + inset), ctx.lineTo(sx + cell, sy + inset));
+        if (groupOf(x, y - 1) !== group) (ctx.moveTo(sx, sy + cell - inset), ctx.lineTo(sx + cell, sy + cell - inset));
+        if (groupOf(x - 1, y) !== group) (ctx.moveTo(sx + inset, sy), ctx.lineTo(sx + inset, sy + cell));
+        if (groupOf(x + 1, y) !== group) (ctx.moveTo(sx + cell - inset, sy), ctx.lineTo(sx + cell - inset, sy + cell));
+        ctx.stroke();
+      }
+    }
+  }
+
+  /**
+   * A random list cell: the list's symbol (or letter) on its color, dice dots in the corner, and for grouped cells the
+   * group effect (assets/effects/group.png, if present) and the group number.
+   */
   private drawList(list: TileList | undefined, group: number | undefined, sx: number, sy: number, size: number): void {
     const { ctx } = this;
     const inset = size * 0.06;
@@ -282,11 +325,20 @@ export class MapView {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    const symbol = loadedImage(symbolInfo(list?.symbol)?.url);
     ctx.fillStyle = "#fff";
-    ctx.font = `700 ${Math.max(8, size * (list && list.glyph.length > 1 ? 0.34 : 0.42))}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(list?.glyph ?? "?", sx + size / 2, sy + size / 2 + 1);
+    if (symbol) {
+      const pad = size * 0.12;
+      ctx.drawImage(symbol, sx + pad, sy + pad, size - pad * 2, size - pad * 2);
+    } else {
+      ctx.font = `700 ${Math.max(8, size * (list && list.glyph.length > 1 ? 0.34 : 0.42))}px system-ui, sans-serif`;
+      ctx.fillText(list?.glyph ?? "?", sx + size / 2, sy + size / 2 + 1);
+    }
+
+    const effect = group === undefined ? undefined : loadedImage(GROUP_EFFECT_URL);
+    if (effect) ctx.drawImage(effect, sx, sy, size, size);
 
     if (size < 16) return;
     // Two dice dots: "this cell is random".

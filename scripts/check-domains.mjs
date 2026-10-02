@@ -40,11 +40,33 @@ export function checkList(text, fileName, knownIds) {
   }
   const problems = [];
   if (fileName !== `${data.id}.list.json`) problems.push(`File name should be ${data.id}.list.json (the list id).`);
+  const empties = data.entries.filter((entry) => entry.empty).length;
   if (data.entries.length === 0) problems.push("The list is empty.");
+  else if (empties === data.entries.length) problems.push("The list only has the empty choice.");
+  if (empties > 1) problems.push("A list can have only one empty choice.");
+  if (data.version < 2 && (empties > 0 || data.icon?.symbol)) problems.push("The empty choice and symbols need list format version 2.");
   if (knownIds) {
-    for (const entry of data.entries) if (!knownIds[data.layer].has(entry.id)) problems.push(`unknown ${data.layer} id "${entry.id}".`);
+    for (const entry of data.entries) if (!entry.empty && !knownIds[data.layer].has(entry.id)) problems.push(`unknown ${data.layer} id "${entry.id}".`);
   }
   return { list: data, problems };
+}
+
+/** The editor's built-in lists (lists/*.list.json), by id, as parsed JSON. */
+export function readBuiltInLists() {
+  const dir = path.join(EDITOR_ROOT, "lists");
+  const lists = new Map();
+  if (!fs.existsSync(dir)) return lists;
+  for (const name of fs.readdirSync(dir).filter((file) => file.endsWith(".list.json"))) {
+    const data = JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"));
+    lists.set(data.id, data);
+  }
+  return lists;
+}
+
+/** Same list content, ignoring formatting and the editor-only name and icon. */
+export function sameListContent(a, b) {
+  const content = (list) => JSON.stringify({ id: list.id, layer: list.layer, entries: list.entries.map((entry) => ({ ...entry, weight: entry.weight ?? 1 })) });
+  return content(a) === content(b);
 }
 
 /**
@@ -139,13 +161,20 @@ function main() {
   };
 
   const lists = new Map();
+  const builtIn = readBuiltInLists();
   for (const file of listFiles) {
     const { list, problems } = checkList(fs.readFileSync(file, "utf8"), path.basename(file), knownIds);
     if (list && lists.has(list.id)) problems.push(`Another list file already has the id "${list.id}".`);
+    if (list && builtIn.has(list.id) && !sameListContent(list, builtIn.get(list.id))) {
+      problems.push(`Differs from the editor's built-in list "${list.id}" (lists/${list.id}.list.json). Run \`npm run lists:sync\` or update the built-in list.`);
+    }
     if (list && !lists.has(list.id)) lists.set(list.id, list);
     report(file, problems);
   }
   for (const file of domainFiles) report(file, checkDomain(fs.readFileSync(file, "utf8"), path.basename(file), knownIds, lists));
+
+  const missingBuiltIns = [...builtIn.keys()].filter((id) => !lists.has(id));
+  if (missingBuiltIns.length) console.log(`\nnote  Built-in lists not in the game yet: ${missingBuiltIns.join(", ")}. \`npm run lists:sync\` copies them.`);
 
   const total = domainFiles.length + listFiles.length;
   console.log(`\n${total - failed} of ${total} files passed (${domainFiles.length} domains, ${listFiles.length} lists).`);

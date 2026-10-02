@@ -27,6 +27,9 @@ A list is its own file, `<id>.list.json` ([format.md → List files](format.md#l
 }
 ```
 
+A list can also have one **empty choice**, `{ "empty": true, "weight": 2 }` (list format version 2): when it is
+picked, the cell stays empty. "Maybe a crate" is a list of crates plus an empty choice.
+
 A domain cell refers to a list by id ([format.md → Brushes](format.md#brushes), format version 2):
 
 ```json
@@ -62,9 +65,10 @@ For each cell holding a list brush:
    h = h * 0xC2B2AE35                  (mod 2^32)
    h = h XOR (h >> 16)
    ```
-4. **Pick.** `total` is the sum of the weights. `r = h mod total`. Walk the entries in file order and subtract each
-   weight from `r` until `r < weight`; that entry is the pick.
-5. **Missing or empty list:** the cell gets nothing (the game logs a warning; the editor's Checks panel reports it).
+4. **Pick.** `total` is the sum of the weights, the empty choice included. `r = h mod total`. Walk the entries in file
+   order and subtract each weight from `r` until `r < weight`; that entry is the pick.
+5. **Empty choice picked:** the cell stays empty. For a group, the whole group stays empty.
+6. **Missing list or list without entries:** the cell gets nothing (the game logs a warning; the editor's Checks panel reports it).
 
 Fixed cells are not affected. Markers are always fixed.
 
@@ -90,7 +94,8 @@ public static uint Hash32(string text)
 public static string RollKey(string layer, Vector2i cell, string list, int? group) =>
     group is { } g ? $"{layer}/{list}/group{g}" : $"{layer}/{cell.X},{cell.Y}";
 
-public static string? Pick(IReadOnlyList<(string Id, int Weight)> entries, uint hash)
+// Id is null for the empty choice.
+public static string? Pick(IReadOnlyList<(string? Id, int Weight)> entries, uint hash)
 {
     var total = 0u;
     foreach (var entry in entries)
@@ -132,15 +137,19 @@ with `CultureInfo.InvariantCulture`.
 | File | Contents |
 |---|---|
 | `fixtures/v2-lists.domain.json` | A domain with ungrouped and grouped list cells on two layers |
-| `fixtures/lists/*.list.json` | The three lists it uses (one with weights 5/2/1) |
-| `fixtures/v2-lists.rolls.json` | `hashes`: `hash32` of a few strings. `results`: for seeds 0, 1, 12345 and 4294967295, the item every list cell must get |
+| `fixtures/lists/*.list.json` | The four lists it uses: one with weights 5/2/1, and `maybe_crate` with an empty choice |
+| `fixtures/v2-lists.rolls.json` | `hashes`: `hash32` of a few strings. `results`: for seeds 0, 1, 12345 and 4294967295, the item every list cell must get, `null` where the empty choice was picked |
 
 The editor's tests (`src/resolve.test.ts`) check these vectors; the game's tests must check the same file.
 Changing anything on this page changes the vectors, so it is a format change: bump the version and update the game.
 
+## Chances in the editor
+
+The editor shows each entry's chance in percent and lets you set it with a slider or a number; the others are scaled
+so the total stays 100 %. Underneath it is still weights: setting a chance rewrites the weights to add up to 1000, so
+0.1 % is the smallest step. The roll above only ever sees weights.
+
 ## What lists do not do (yet)
 
-- **No "maybe nothing".** Every pick is an item. A "50 % chance of a crate" list would need an empty entry; it can be
-  added later as an entry with a special id without changing the roll.
-- **No map-wide picks.** "Every weak wall in the whole domain is the same" can be done today by putting all those cells
-  in one group.
+- **No map-wide picks as a setting.** "Every weak wall in the whole domain is the same" is done by putting all those
+  cells in one group.

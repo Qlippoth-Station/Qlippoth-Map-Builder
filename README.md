@@ -18,7 +18,9 @@ Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved 
 **Random lists** let a cell be "one of these" instead of one fixed item, for example a *Weak walls* list of walls that
 can be broken and a *Strong walls* list of walls that cannot. Each list has its own icon on the map, can roll every
 cell on its own or give a group of cells the same pick, and is saved as its own `.list.json` file to share and to add
-to pull requests next to the domain. See [Random lists](docs/user-guide.md#random-lists).
+to pull requests next to the domain. Chances are set with sliders or percentages, a list can include an empty choice
+("maybe a crate"), and the built-in lists in [`lists/`](lists/README.md) are read-only because they are part of the
+game. See [Random lists](docs/user-guide.md#random-lists).
 
 Press `?` in the editor for all shortcuts. The [user guide](docs/user-guide.md) covers everything in detail.
 
@@ -71,7 +73,8 @@ the scripts find the game there without any path:
 npm install
 npm run palette   # builds public/palette from ../Qlippoth-station-14
 npm run dev
-npm run domains   # checks every ../Qlippoth-station-14/Resources/Domains/**/*.domain.json
+npm run domains   # checks every domain and list file in ../Qlippoth-station-14/Resources/Domains/
+npm run lists:sync   # copies the built-in lists into the game
 ```
 
 `--game <path>` (or `QLIPPOTH_GAME_DIR`) points `palette` and `domains` at another checkout.
@@ -88,6 +91,9 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | `scripts/build-palette.mjs` | Reads tile and entity prototypes, resolves inheritance, builds `palette.json`, `atlas.png`, `credits.json` |
 | `scripts/check-domains.mjs` | Checks the domain files in the game checkout (schema, bounds, markers, ids) |
 | `scripts/game-dir.mjs` | Finds the game checkout (next to this repository by default) |
+| `scripts/sync-lists.mjs` | Copies the built-in lists into the game checkout |
+| `lists/` | Built-in random lists (read-only in the editor) |
+| `assets/list-symbols/`, `assets/effects/` | Editor art: list symbols and the group effect |
 | `src/document.ts` | Domain document model and file format |
 | `src/brush.ts` | Brush kinds and everything that depends on their shape |
 | `src/migrate.ts` | Upgrades older file versions to the current one |

@@ -4,16 +4,17 @@ import rollsText from "../fixtures/v2-lists.rolls.json?raw";
 import weak from "../fixtures/lists/weak_walls.list.json?raw";
 import strong from "../fixtures/lists/strong_walls.list.json?raw";
 import mixed from "../fixtures/lists/mixed_floor.list.json?raw";
+import crate from "../fixtures/lists/maybe_crate.list.json?raw";
 import { LAYERS, cellKey, createDocument, deserialize } from "./document";
 import { fixedBrush, listBrush } from "./brush";
 import { createList, parseList } from "./lists";
 import { hash32, normalizeSeed, pickEntry, resolveDocument } from "./resolve";
 
-const lists = new Map([weak, strong, mixed].map((text) => parseList(text)).map((list) => [list.id, list]));
+const lists = new Map([weak, strong, mixed, crate].map((text) => parseList(text)).map((list) => [list.id, list]));
 const lookup = (id: string) => lists.get(id);
 const vectors: {
   hashes: { text: string; hash: number }[];
-  results: { seed: number; rolls: Record<string, Record<string, string>> }[];
+  results: { seed: number; rolls: Record<string, Record<string, string | null>> }[];
 } = JSON.parse(rollsText);
 
 describe("resolve (test vectors shared with the game)", () => {
@@ -26,7 +27,7 @@ describe("resolve (test vectors shared with the game)", () => {
     for (const { seed, rolls } of vectors.results) {
       const resolved = resolveDocument(doc, lookup, seed);
       for (const layer of LAYERS) {
-        for (const [key, id] of Object.entries(rolls[layer] ?? {})) expect(resolved[layer].get(key), `seed ${seed} ${layer} ${key}`).toBe(id);
+        for (const [key, id] of Object.entries(rolls[layer] ?? {})) expect(resolved[layer].get(key) ?? null, `seed ${seed} ${layer} ${key}`).toBe(id);
       }
     }
   });
@@ -51,6 +52,19 @@ describe("resolve", () => {
     // Weights 5 : 2 : 1 over 10 000 cells.
     expect(counts.get("FloorSteel")! / 10000).toBeCloseTo(5 / 8, 1);
     expect(counts.get("Plating")! / 10000).toBeCloseTo(1 / 8, 1);
+  });
+
+  it("leaves the cell empty when the empty choice is picked, for a whole group at once", () => {
+    const doc = deserialize(domainText);
+    let emptyCells = 0;
+    for (let seed = 0; seed < 200; seed++) {
+      const object = resolveDocument(doc, lookup, seed).object;
+      const group = ["1,2", "2,2", "3,2"].map((key) => object.get(key) ?? null);
+      expect(new Set(group).size).toBe(1);
+      emptyCells += ["1,1", "2,1", "3,1", "5,1"].filter((key) => !object.has(key)).length;
+    }
+    // The empty choice has weight 2 of 4: about half of 800 cells.
+    expect(emptyCells / 800).toBeCloseTo(0.5, 1);
   });
 
   it("leaves out cells whose list is missing or empty", () => {

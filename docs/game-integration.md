@@ -92,7 +92,8 @@ So **domain files plug in as a second `QlippothDungeon` implementation.** Nothin
    The game reads it by its content path (`/Domains/...`).
 3. Use lowercase file names with underscores (`yellow_palace.domain.json`). Content paths are case sensitive on Linux servers.
 4. If the domain uses **random lists**, export them in the editor (**Lists → Export lists used by this domain**) and
-   put them in `Resources/Domains/Lists/<id>.list.json`. Such domains are format version 2 and need the stage 4b
+   put them in `Resources/Domains/Lists/<id>.list.json`. The editor's built-in lists go there as well
+   (`npm run lists:sync`). Such domains are format version 2 and need the stage 4b
    reader ([game-side-tasks.md](game-side-tasks.md#stage-4b-random-lists)); domains without lists are saved as version 1.
 5. With both repositories side by side in the same folder (see the README), check every domain file from the editor
    repository before committing:

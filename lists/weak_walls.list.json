@@ -1,0 +1,25 @@
+{
+  "format": "qlippoth-list",
+  "version": 1,
+  "id": "weak_walls",
+  "name": "Weak walls",
+  "layer": "structure",
+  "icon": {
+    "glyph": "W",
+    "color": "#c0803a"
+  },
+  "entries": [
+    {
+      "id": "WallSolid",
+      "weight": 3
+    },
+    {
+      "id": "Grille",
+      "weight": 1
+    },
+    {
+      "id": "Girder",
+      "weight": 1
+    }
+  ]
+}

@@ -4,7 +4,9 @@ import { TOOLS, TOOL_INFO, Editor } from "./editor";
 import { clear, h } from "./dom";
 import { loadPalette, type Palette } from "./palette";
 import { brushName, buildPalettePanel, buildSidebar, buildTopBar, newSeed } from "./ui";
-import { parseList, serializeList, type TileList } from "./lists";
+import { parseList, serializeList, uniqueListId, type TileList } from "./lists";
+import { loadBuiltInLists } from "./builtinLists";
+import { loadArt } from "./assets";
 import { buildListsDialog, importListFiles } from "./listsDialog";
 import { MapView, isTyping } from "./view";
 
@@ -74,9 +76,22 @@ function fileName(name: string): string {
 function start(palette: Palette): void {
   const initial = initialDocument();
   const editor = new Editor(palette, initial.doc);
-  for (const list of readListLibrary()) editor.lists.set(list.id, list);
+  const builtIn = loadBuiltInLists();
+  editor.addBuiltInLists(builtIn.lists);
+  const listNotices = builtIn.problems.map((problem) => `Built-in list skipped: ${problem}`);
+  for (const list of readListLibrary()) {
+    if (!editor.lists.get(list.id)?.builtIn) {
+      editor.setList(list);
+      continue;
+    }
+    // A list of this user now has the id of a built-in list. The built-in one wins; keep theirs under a new id.
+    const id = uniqueListId(`${list.id}_mine`, editor.lists.keys());
+    editor.setList({ ...list, id, name: `${list.name} (mine)` });
+    listNotices.push(`Your list "${list.name}" has the id "${list.id}", which is now a built-in list. Domains using "${list.id}" now get the built-in list; your version is kept as "${id}".`);
+  }
+  if (listNotices.length) setTimeout(() => window.alert(listNotices.join("\n\n")), 0);
   editor.subscribe((topics) => {
-    if (topics.has("lists")) writeAutosave(JSON.stringify([...editor.lists.values()].map(serializeList)), LISTS_KEY);
+    if (topics.has("lists")) writeAutosave(JSON.stringify(editor.userLists().map(serializeList)), LISTS_KEY);
   });
   if (initial.notice) setTimeout(() => window.alert(initial.notice), 0);
   const stage = h("section", { class: "stage" });
@@ -382,7 +397,8 @@ function start(palette: Palette): void {
 
 async function main() {
   try {
-    start(await loadPalette());
+    const [palette] = await Promise.all([loadPalette(), loadArt()]);
+    start(palette);
   } catch (error) {
     clear(
       app,

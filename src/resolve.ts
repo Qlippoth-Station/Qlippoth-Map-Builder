@@ -29,7 +29,7 @@ export function rollKey(layer: LayerId, x: number, y: number, brush: Extract<Bru
   return brush.group === undefined ? `${layer}/${x},${y}` : `${layer}/${brush.list}/group${brush.group}`;
 }
 
-/** Picks an entry by weight. Returns null for an empty list. */
+/** Picks an entry by weight. Returns null for an empty list and when the empty choice is picked. */
 export function pickEntry(list: TileList, hash: number): string | null {
   const total = list.entries.reduce((sum, entry) => sum + entry.weight, 0);
   if (total === 0) return null;

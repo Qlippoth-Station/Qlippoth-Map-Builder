@@ -5,6 +5,7 @@ import { iconOrigin, type Palette, type PaletteItem } from "./palette";
 import { isListLayer, type TileList } from "./lists";
 import { listBrush, type Brush } from "./brush";
 import { normalizeSeed } from "./resolve";
+import { symbolInfo } from "./assets";
 import type { MapView } from "./view";
 
 const PALETTE_LIMIT = 400;
@@ -28,8 +29,10 @@ export function icon(palette: Palette, item: PaletteItem | undefined, id?: strin
 /** The icon a random list shows in the palette and on the map. */
 export function listIcon(list: TileList | undefined, id?: string): HTMLElement {
   if (!list) return h("span", { class: "icon unknown list-icon", title: id ? `List not loaded: ${id}` : "" }, "?");
-  const element = h("span", { class: "icon glyph list-icon" }, list.glyph);
+  const symbol = symbolInfo(list.symbol);
+  const element = symbol ? h("span", { class: "icon list-icon symbol" }) : h("span", { class: "icon glyph list-icon" }, list.glyph);
   element.style.backgroundColor = list.color;
+  if (symbol) element.style.backgroundImage = `url("${symbol.url}")`;
   return element;
 }
 
@@ -248,7 +251,7 @@ export function buildPalettePanel(editor: Editor, actions: { manageLists(): void
           "div",
           { class: "selected-text" },
           h("strong", {}, list ? `Random: ${list.name}` : brush.list),
-          h("code", {}, list ? `${list.entries.length} entries · ${list.id}` : "List not loaded"),
+          h("code", {}, list ? `${list.entries.length} entries · ${list.id}${list.builtIn ? " · built in" : ""}` : "List not loaded"),
           h(
             "label",
             { class: "check same-choice", title: "Every stroke (brush drag, rectangle or fill) gets one random pick for all its cells" },
@@ -336,11 +339,11 @@ export function buildPalettePanel(editor: Editor, actions: { manageLists(): void
                 "button",
                 {
                   class: `palette-item${list.id === current ? " active" : ""}`,
-                  title: `${list.name} (${list.id})\n${list.entries.length} entries: ${list.entries.map((entry) => entry.id).join(", ")}`,
+                  title: `${list.name} (${list.id})${list.builtIn ? ", built in" : ""}\n${list.entries.length} entries: ${list.entries.map((entry) => entry.id ?? "nothing").join(", ")}`,
                   onclick: () => editor.select(layer, listBrush(list.id)),
                 },
                 listIcon(list),
-                h("span", { class: "palette-name" }, list.name)
+                h("span", { class: "palette-name" }, list.builtIn ? "🔒 " : "", list.name)
               )
             )
           )

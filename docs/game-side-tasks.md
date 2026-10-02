@@ -210,14 +210,19 @@ lists are `.list.json` files, and the roll is specified in [randomness.md](rando
 
 Put the lists the domains use in `Resources/Domains/Lists/<id>.list.json`, exported from the editor with
 **Lists → Export lists used by this domain**. The file name must be the list id; ids are unique across the folder.
+The editor's **built-in lists** (`lists/` in the editor repository) belong here too: `npm run lists:sync` copies them,
+and `npm run domains` fails when a game copy differs from the built-in one.
 
 ### 2. Read list files
 
 A small class with `Id`, `Layer` and `Entries` (`(string Id, int Weight)` in file order), and a loader that reads
 every `*.list.json` under `/Domains/` once. Reject (with the file name in the message): a `format` other than
-`"qlippoth-list"`, a `version` other than 1, an id that does not match the file name, a layer other than
+`"qlippoth-list"`, a `version` other than 1 or 2, an id that does not match the file name, a layer other than
 `floor` / `structure` / `object`, a weight outside 1–1000 (missing means 1), and two files with the same id.
-Ignore `name` and `icon`; they are for the editor. Test it with `fixtures/lists/*.list.json`.
+An entry is either `{ "id", "weight" }` or, in version 2, the **empty choice** `{ "empty": true, "weight" }` (at most
+one per list); keep it in the entry list with a null id, because its weight takes part in the roll.
+Ignore `name` and `icon`; they are for the editor. Test it with `fixtures/lists/*.list.json` (`maybe_crate` has an
+empty choice).
 
 ### 3. Read version 2 domains
 
@@ -235,7 +240,7 @@ Copy `Hash32`, `RollKey` and `Pick` from [randomness.md](randomness.md#the-roll)
 
 - `Hash32(text)` equals every `hashes[].hash`,
 - for every `results[]` seed, rolling every list cell of `v2-lists.domain.json` with the fixture lists gives exactly
-  the ids in `rolls`.
+  the ids in `rolls` (`null` means the empty choice was rolled and the cell stays empty).
 
 If one value differs, the port is wrong; do not change the vectors. Common mistakes: signed `int` instead of `uint`,
 formatting the seed with the current culture, rolling a group cell with its cell key instead of its group key.
@@ -247,12 +252,13 @@ formatting the seed with the current culture, rolling a group cell with its cell
 - Log it: `qlippoth.domain` info `"{Path} built with seed {seed}"`. Entering that seed in the editor's random preview
   shows the same rift, which makes bug reports reproducible.
 - Before placing anything, turn every list cell into its rolled id; then build exactly as in 4a (floor grouped by
-  tile, entities at cell centres). Missing or empty lists: skip the cell and log a warning, like an unknown id.
+  tile, entities at cell centres). When the empty choice is rolled, place nothing there; that is normal, not a
+  warning. Missing lists or lists without entries: skip the cell and log a warning, like an unknown id.
 
 ### 6. Check lists in `Validate` and the integration test
 
-`Validate` reports: a list that is not loaded, a list used on another layer than its own, an empty list, and list
-entries that are not real tiles or entities. The integration test from 4a step 5 then covers lists automatically;
+`Validate` reports: a list that is not loaded, a list used on another layer than its own, a list without entries or
+with only the empty choice, and list entries that are not real tiles or entities. The integration test from 4a step 5 then covers lists automatically;
 also make it load every list file once so a broken list fails even if no domain uses it yet.
 
 ### 7. Test in game against the editor preview

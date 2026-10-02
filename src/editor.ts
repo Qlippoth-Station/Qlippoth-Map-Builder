@@ -157,15 +157,29 @@ export class Editor {
 
   // ---- Random lists ----------------------------------------------------------------------------
 
-  /** Adds a list to the library or replaces the one with the same id. */
-  setList(list: TileList): void {
-    this.lists.set(list.id, list);
+  /** Adds a list to the library or replaces the one with the same id. Built-in lists cannot be replaced. */
+  setList(list: TileList): boolean {
+    if (this.lists.get(list.id)?.builtIn) return false;
+    this.lists.set(list.id, list.builtIn ? { ...list, builtIn: false } : list);
+    this.listsRevision++;
+    this.emit("lists", "view");
+    return true;
+  }
+
+  /** Loads the lists that ship with the editor. They stay read-only. */
+  addBuiltInLists(lists: TileList[]): void {
+    for (const list of lists) this.lists.set(list.id, { ...list, builtIn: true });
     this.listsRevision++;
     this.emit("lists", "view");
   }
 
+  /** The user's own lists: everything except the built-in ones. */
+  userLists(): TileList[] {
+    return [...this.lists.values()].filter((list) => !list.builtIn);
+  }
+
   removeList(id: string): void {
-    if (!this.lists.delete(id)) return;
+    if (this.lists.get(id)?.builtIn || !this.lists.delete(id)) return;
     this.listsRevision++;
     for (const layer of LAYERS) {
       const selected = this.selected[layer];
@@ -471,8 +485,11 @@ export class Editor {
         }
         if (list.layer !== layer) warnings.push({ message: `List "${list.name}" is for the ${list.layer} layer but is used on ${layer}.`, at });
         if (list.entries.length === 0) warnings.push({ message: `List "${list.name}" is empty.`, at });
+        else if (list.entries.every((entry) => entry.id === null)) warnings.push({ message: `List "${list.name}" only has the empty choice.`, at });
         for (const entry of list.entries) {
-          if (!this.palette.byLayer[list.layer].has(entry.id)) warnings.push({ message: `Unknown ${list.layer} id "${entry.id}" in list "${list.name}".`, at });
+          if (entry.id !== null && !this.palette.byLayer[list.layer].has(entry.id)) {
+            warnings.push({ message: `Unknown ${list.layer} id "${entry.id}" in list "${list.name}".`, at });
+          }
         }
       }
     }

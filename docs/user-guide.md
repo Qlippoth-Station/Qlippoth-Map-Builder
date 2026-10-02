@@ -115,7 +115,14 @@ Some cells should not always be the same thing. A **random list** is a named lis
 - *Mixed floor*: mostly steel, sometimes dirty steel or plating.
 
 Paint with a list instead of an item, and the game picks one entry of the list for that cell every time it builds the
-rift. On the map, list cells show the list's **icon** (its letter on its color, with two dice dots) instead of an item.
+rift. On the map, list cells show the list's **icon** (its symbol or letter on its color, with two dice dots) instead
+of an item.
+
+### Built-in lists and your lists
+
+- **Built-in lists** (🔒) ship with the editor. They are part of the game, so they cannot be changed or deleted, and
+  no other list can take their id. **Duplicate as my list** makes an editable copy with a new id.
+- **Your lists** are kept in this browser, are not tied to a domain, and every domain you make can use them.
 
 ### Making a list
 
@@ -123,12 +130,14 @@ rift. On the map, list cells show the list's **icon** (its letter on its color, 
 2. A list belongs to one layer (Floor, Structure or Object). New lists take the active layer; change **Layer** while
    the list is still empty if needed.
 3. **New list**, give it a name. Its id (`weak_walls`) and file name (`weak_walls.list.json`) come from the name.
-4. Choose an **icon** (one or two characters) and a **color**.
+4. Choose a **symbol** (or keep the **letter**, one or two characters) and a **color**. Symbols come from the editor's
+   symbol set ([assets/list-symbols](../assets/list-symbols/README.md)).
 5. Search for items under the entry table and click them to add them.
-6. **Weight** sets how often an entry is picked compared to the others: weight 3 next to two entries of weight 1 is
-   picked 60 % of the time. The *Chance* column shows the result.
-
-Lists are kept in this browser and are not tied to a domain. Every domain you make can use them.
+6. Set the **chances**: drag an entry's bar or type its percentage. The other entries are adjusted automatically so
+   everything adds up to 100 %, keeping their proportions to each other. **Equal chances** gives every entry the same
+   share. The smallest step is 0.1 %; to drop an entry completely, remove it (✕).
+7. **Add empty choice** adds a "Nothing" entry: when it is picked, the cell stays empty. Use it for things that should
+   only be there sometimes, for example a list of crates plus *Nothing* at 50 %. A list can have one empty choice.
 
 ### Painting with a list
 
@@ -143,14 +152,16 @@ Sometimes cells should be random but **the same**: a whole wall segment that is 
 
 - Tick **Same pick for the whole stroke** under the selected list. Every stroke you paint after that (one brush drag,
   one rectangle, one fill) becomes one **group**: the game picks once for the group and all its cells get that item.
-  Grouped cells show the group number in their corner.
+  If the empty choice comes up, the whole group stays empty.
+- Each group gets an **outline in its own color** around its cells, the group number in the corner and, when the
+  editor has the art for it, a group effect over its cells.
 - For cells that are already painted: select them with **Select** (`S`) and press `L`. The list cells in the selection
   become one group (per list). `Shift+L` removes the group again, so every cell rolls on its own.
 
 ### Random preview
 
 Tick **Random preview** (`P`) in the View panel to see what the list cells become, rolled exactly the way the game
-rolls them. **Reroll** (`N`) tries another seed. The game logs the seed of every rift it builds; type it into **Seed**
+rolls them; cells whose empty choice came up stay empty. **Reroll** (`N`) tries another seed. The game logs the seed of every rift it builds; type it into **Seed**
 to see exactly that rift. Turn the preview off to see and edit the list icons again.
 
 ### Sharing lists
@@ -161,6 +172,7 @@ A domain only refers to its lists by id; the lists themselves are separate `.lis
   saves every list the open domain uses. Add those files to the pull request next to the domain.
 - **Import**: **Import…** in the Lists dialog, or simply **Open** the domain together with its list files (select them
   all in the file picker). If a different list with the same id is already loaded, the editor asks before replacing it.
+  A file with the id of a built-in list is not imported unless it is identical.
 - A domain whose list is not loaded shows `List "…" is not loaded` in Checks; its cells show a red `?`.
 
 ## Resizing
@@ -192,7 +204,7 @@ The Checks panel updates as you paint. It reports:
 | Marker inside a wall | Players would spawn stuck in a wall |
 | Unknown id | The id is not in the current palette, usually because it was renamed or removed in the game |
 | List not loaded | The domain uses a list this browser does not have. Import its `.list.json` |
-| List used on the wrong layer / empty list / unknown id in a list | The game could not place anything sensible for those cells |
+| List used on the wrong layer / empty list / list with only the empty choice / unknown id in a list | The game could not place anything sensible for those cells |
 
 A clean Checks panel is expected for files submitted to the game. If a warning is intentional, explain it in the pull request.
 

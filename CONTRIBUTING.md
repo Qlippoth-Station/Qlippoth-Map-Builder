@@ -19,5 +19,7 @@
   - an upgrade step from the previous version in `src/migrate.ts`, with a test,
   - updates to `docs/format.md`, `docs/domain.schema.json` and, where useful, a new file in `fixtures/`.
 - A new brush kind is added in `src/brush.ts`; the type checker then points at every switch that has to handle it.
+- Built-in lists (`lists/`) and editor art (`assets/`) are added by dropping files in; see the README in each folder.
+  `npm test` validates the built-in lists.
 - Run `npm test` and `npm run build` before opening a pull request; CI runs the same commands.
 - Do not commit `public/palette/`; it is generated from the game repository.

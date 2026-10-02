@@ -50,7 +50,7 @@ export function brushIds(brush: Brush, lists: ListLookup): string[] {
     case "fixed":
       return [brush.id];
     case "list":
-      return lists(brush.list)?.entries.map((entry) => entry.id) ?? [];
+      return lists(brush.list)?.entries.flatMap((entry) => (entry.id === null ? [] : [entry.id])) ?? [];
   }
 }
 

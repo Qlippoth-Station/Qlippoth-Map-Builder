@@ -1,7 +1,7 @@
 {
   "name": "qlippoth-domain-builder",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Web-based visual editor for Qlippoth Station rift domains.",
   "license": "MIT",
   "type": "module",
@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "palette": "node scripts/build-palette.mjs",
-    "domains": "node scripts/check-domains.mjs"
+    "domains": "node scripts/check-domains.mjs",
+    "lists:sync": "node scripts/sync-lists.mjs"
   },
   "devDependencies": {
     "ajv": "^8.20.0",

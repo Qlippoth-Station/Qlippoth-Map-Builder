@@ -8,7 +8,9 @@
 | [randomness.md](randomness.md) | Game and editor developers | Random lists: how a cell's item is picked from a seed, C# reference, test vectors |
 | [format.md](format.md) | Anyone reading or writing files | File format reference, version 1 |
 | [domain.schema.json](domain.schema.json) | Tools and CI | JSON Schema for domain files (versions 1 and 2) |
-| [list.schema.json](list.schema.json) | Tools and CI | JSON Schema for `.list.json` files |
+| [list.schema.json](list.schema.json) | Tools and CI | JSON Schema for `.list.json` files (versions 1 and 2) |
+| [../lists/README.md](../lists/README.md) | Maintainers | Built-in lists: what they are and how to add one |
+| [../assets/list-symbols/README.md](../assets/list-symbols/README.md), [../assets/effects/README.md](../assets/effects/README.md) | Artists | List symbols and the group effect: sizes, style, file names |
 | [atmosphere.md](atmosphere.md) | Game and editor developers | Proposal: choosing a domain's air in the editor, storing it in the file and applying it in the game |
 | [palette.md](palette.md) | Editor developers | How the palette is built from the game repository, and the CI that deploys it |
 | [architecture.md](architecture.md) | Editor developers | Code layout, data flow, undo, how to add markers, checks and tools |

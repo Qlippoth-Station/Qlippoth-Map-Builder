@@ -14,7 +14,10 @@ canvas. There is no framework, no backend and no runtime dependency.
 | `src/migrate.ts` | Upgrades older file versions step by step |
 | `src/lists.ts` | Random lists: model, `.list.json` read/write, ids |
 | `src/resolve.ts` | The seeded roll of list cells ([randomness.md](randomness.md)); shared spec with the game |
-| `src/listsDialog.ts` | The Lists dialog: create, edit, import, export |
+| `src/listsDialog.ts` | The Lists dialog: create, edit, chances, import, export |
+| `src/builtinLists.ts` | Bundles the read-only lists in `lists/` |
+| `src/assets.ts` | Bundles and preloads list symbols (`assets/list-symbols/`) and map effects (`assets/effects/`) |
+| `lists/`, `assets/` | Built-in lists and editor art; added by dropping files in, see their READMEs |
 | `src/editor.ts` | `Editor`: state, edits, undo/redo, change notifications, checks |
 | `src/view.ts` | `MapView`: canvas rendering, camera, mouse input for tools |
 | `src/ui.ts` | Left sidebar (tools, layers, view, checks), palette panel, top bar |
@@ -24,6 +27,7 @@ canvas. There is no framework, no backend and no runtime dependency.
 | `scripts/build-palette.mjs` | Node script that builds the palette from the game (see [palette.md](palette.md)) |
 | `scripts/check-domains.mjs` | Node script that checks the domain files in the game checkout |
 | `scripts/game-dir.mjs` | Finds the game checkout, next to this repository by default |
+| `scripts/sync-lists.mjs` | Copies the built-in lists into the game checkout |
 
 ## Data flow
 
@@ -44,8 +48,10 @@ ones, and reports the cells it drops (out of bounds, unknown brush kind, list br
 
 ### Random lists
 
-Lists are not part of the document: `Editor.lists` is the user's library (stored in `localStorage` and imported or
-exported as `.list.json` files), and cells refer to lists by id. `Editor.strokeBrush()` gives each stroke its own
+Lists are not part of the document: `Editor.lists` holds the built-in lists (`builtIn: true`, read-only: `setList`
+and `removeList` refuse them) and the user's library (stored in `localStorage`, imported or exported as `.list.json`
+files), and cells refer to lists by id. Chances in the dialog are a view of the weights (`chances`, `setEntryChance`
+in `src/lists.ts`); the empty choice is an entry with `id: null`. `Editor.strokeBrush()` gives each stroke its own
 `group` when *Same pick* is on; `linkSelection()` does the same for a selection. `previewCells()` runs
 `resolveDocument` for the preview seed and caches it until the document or the lists change.
 

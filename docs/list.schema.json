@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Qlippoth-Station/Qlippoth-Map-Builder/blob/main/docs/list.schema.json",
-  "title": "Qlippoth random list file, version 1",
-  "description": "A random list (.list.json) made with the Qlippoth Domain Builder. See docs/format.md. The file name must be <id>.list.json.",
+  "title": "Qlippoth random list file, versions 1 and 2",
+  "description": "A random list (.list.json) made with the Qlippoth Domain Builder. See docs/format.md. The file name must be <id>.list.json. Version 2 adds the empty choice and symbol icons; at most one entry may be empty (not expressible here).",
   "type": "object",
   "required": [
     "format",
@@ -17,7 +17,10 @@
       "const": "qlippoth-list"
     },
     "version": {
-      "const": 1
+      "enum": [
+        1,
+        2
+      ]
     },
     "id": {
       "type": "string",
@@ -45,30 +48,60 @@
         "color": {
           "type": "string",
           "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "symbol": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$",
+          "description": "Version 2. File name (without extension) of an image in assets/list-symbols/ of the editor."
         }
       }
     },
     "entries": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": [
-          "id"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "weight": {
+                "$ref": "#/$defs/weight"
+              }
+            }
           },
-          "weight": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1000,
-            "default": 1
+          {
+            "type": "object",
+            "required": [
+              "empty"
+            ],
+            "additionalProperties": false,
+            "description": "Version 2. The empty choice: when picked, the cell stays empty.",
+            "properties": {
+              "empty": {
+                "const": true
+              },
+              "weight": {
+                "$ref": "#/$defs/weight"
+              }
+            }
           }
-        }
+        ]
       }
+    }
+  },
+  "$defs": {
+    "weight": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "default": 1
     }
   }
 }

@@ -48,8 +48,15 @@
           "3,3": "WallReinforced",
           "4,3": "WallSolid"
         },
-        "object": {},
-        "marker": {}
+        "object": {
+          "1,1": "CrateGenericSteel",
+          "2,1": "CrateGenericSteel",
+          "3,1": null,
+          "5,1": null,
+          "1,2": "CrateGenericSteel",
+          "2,2": "CrateGenericSteel",
+          "3,2": "CrateGenericSteel"
+        }
       }
     },
     {
@@ -82,8 +89,15 @@
           "3,3": "WallPlastitanium",
           "4,3": "Girder"
         },
-        "object": {},
-        "marker": {}
+        "object": {
+          "1,1": null,
+          "2,1": null,
+          "3,1": "CratePlastic",
+          "5,1": "CratePlastic",
+          "1,2": "CratePlastic",
+          "2,2": "CratePlastic",
+          "3,2": "CratePlastic"
+        }
       }
     },
     {
@@ -116,8 +130,15 @@
           "3,3": "WallPlastitanium",
           "4,3": "Grille"
         },
-        "object": {},
-        "marker": {}
+        "object": {
+          "1,1": null,
+          "2,1": "CrateGenericSteel",
+          "3,1": null,
+          "5,1": null,
+          "1,2": "CrateGenericSteel",
+          "2,2": "CrateGenericSteel",
+          "3,2": "CrateGenericSteel"
+        }
       }
     },
     {
@@ -150,8 +171,15 @@
           "3,3": "WallReinforced",
           "4,3": "WallSolid"
         },
-        "object": {},
-        "marker": {}
+        "object": {
+          "1,1": null,
+          "2,1": null,
+          "3,1": null,
+          "5,1": "CratePlastic",
+          "1,2": null,
+          "2,2": null,
+          "3,2": null
+        }
       }
     }
   ]

@@ -1,0 +1,21 @@
+{
+  "format": "qlippoth-list",
+  "version": 1,
+  "id": "strong_walls",
+  "name": "Strong walls",
+  "layer": "structure",
+  "icon": {
+    "glyph": "S",
+    "color": "#5a6ed6"
+  },
+  "entries": [
+    {
+      "id": "WallReinforced",
+      "weight": 1
+    },
+    {
+      "id": "WallPlastitanium",
+      "weight": 1
+    }
+  ]
+}

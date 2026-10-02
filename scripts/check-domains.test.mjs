@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkDomain, checkList } from "./check-domains.mjs";
+import { checkDomain, checkList, readBuiltInLists, sameListContent } from "./check-domains.mjs";
 import { EDITOR_ROOT } from "./game-dir.mjs";
 
 const fixture = fs.readFileSync(path.join(EDITOR_ROOT, "fixtures/v1-basic.domain.json"), "utf8");
@@ -58,11 +58,11 @@ describe("random lists", () => {
   const ids = {
     floor: new Set(["FloorSteel", "FloorSteelDirty", "Plating"]),
     structure: new Set(["WallSolid", "Grille", "Girder", "WallReinforced", "WallPlastitanium"]),
-    object: new Set(),
+    object: new Set(["CrateGenericSteel", "CratePlastic"]),
     marker: new Set(),
   };
   const lists = new Map(
-    ["weak_walls", "strong_walls", "mixed_floor"].map((id) => [id, checkList(read(`lists/${id}.list.json`), `${id}.list.json`, ids).list])
+    ["weak_walls", "strong_walls", "mixed_floor", "maybe_crate"].map((id) => [id, checkList(read(`lists/${id}.list.json`), `${id}.list.json`, ids).list])
   );
 
   it("passes the list fixtures and the domain that uses them", () => {
@@ -94,5 +94,26 @@ describe("random lists", () => {
       'object 2,1: list "nowhere" not found (add nowhere.list.json under Resources/Domains/Lists/).',
       "Uses random lists, which need format version 2.",
     ]);
+  });
+});
+
+describe("empty choice and built-in lists", () => {
+  const list = (changes) => JSON.stringify({ format: "qlippoth-list", version: 2, id: "x", layer: "object", entries: [{ id: "Table" }], ...changes });
+
+  it("reports an only-empty list, two empty choices and version 1 files using version 2 features", () => {
+    expect(checkList(list({ entries: [{ empty: true }] }), "x.list.json", null).problems).toEqual(["The list only has the empty choice."]);
+    expect(checkList(list({ entries: [{ id: "Table" }, { empty: true }, { empty: true, weight: 2 }] }), "x.list.json", null).problems).toEqual([
+      "A list can have only one empty choice.",
+    ]);
+    expect(checkList(list({ version: 1, entries: [{ id: "Table" }, { empty: true }] }), "x.list.json", null).problems[0]).toMatch(/^Schema:|version 2/);
+  });
+
+  it("compares a game list with the built-in one by content only", () => {
+    const builtIn = readBuiltInLists();
+    expect(builtIn.size).toBeGreaterThan(0);
+    const [id, original] = [...builtIn][0];
+    expect(sameListContent({ ...original, name: "Renamed", icon: { glyph: "Z" } }, original)).toBe(true);
+    expect(sameListContent({ ...original, entries: original.entries.slice(1) }, original)).toBe(false);
+    expect(id).toBe(original.id);
   });
 });

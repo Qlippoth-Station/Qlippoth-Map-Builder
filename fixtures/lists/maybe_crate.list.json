@@ -1,0 +1,25 @@
+{
+  "format": "qlippoth-list",
+  "version": 2,
+  "id": "maybe_crate",
+  "name": "Maybe a crate",
+  "layer": "object",
+  "icon": {
+    "glyph": "C",
+    "color": "#8a6a3a"
+  },
+  "entries": [
+    {
+      "id": "CrateGenericSteel",
+      "weight": 1
+    },
+    {
+      "id": "CratePlastic",
+      "weight": 1
+    },
+    {
+      "empty": true,
+      "weight": 2
+    }
+  ]
+}
