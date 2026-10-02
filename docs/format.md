@@ -1,4 +1,4 @@
-# Domain file format (version 1)
+# Domain file format (versions 1 and 2)
 
 A domain file is UTF-8 JSON with the `.domain.json` extension. It is written by the editor and read by the game
 (see [game-integration.md](game-integration.md)). A machine-readable [JSON Schema](domain.schema.json) is included,
@@ -25,7 +25,7 @@ and [`fixtures/`](../fixtures) holds example files that every reader should hand
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `format` | string | yes | Always `"qlippoth-domain"` |
-| `version` | integer | yes | Format version, `1` for this document |
+| `version` | integer | yes | Format version: `1`, or `2` when the file uses random lists |
 | `name` | string | no | Display name. Defaults to `"Untitled"` when missing |
 | `width` | integer | yes | Number of columns, 1 to 256 |
 | `height` | integer | yes | Number of rows, 1 to 256 |
@@ -69,7 +69,7 @@ Which entities go to `structure` and which to `object` is decided by the palette
 
 ## Brushes
 
-Version 1 only has fixed brushes: the cell always becomes the given id.
+A cell holds a brush. Version 1 only has **fixed** brushes: the cell always becomes the given id.
 
 ```json
 { "kind": "fixed", "id": "FloorSteel" }
@@ -80,9 +80,54 @@ Version 1 only has fixed brushes: the cell always becomes the given id.
 | `kind` | `"fixed"` | Brush kind |
 | `id` | string | Tile id, entity id or marker id, depending on the layer |
 
-Later versions will add set brushes with random modes (weak / default / full / chance) and roll scopes (cell / group / map).
+Version 2 adds **list** brushes: the cell becomes one entry of a [random list](#list-files), picked when the game
+builds the rift. Markers are always fixed.
 
-## Not in version 1
+```json
+{ "kind": "list", "list": "weak_walls" }
+{ "kind": "list", "list": "weak_walls", "group": 1 }
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `kind` | `"list"` | Brush kind |
+| `list` | string | Id of the list (lowercase snake_case), the same as its file name without `.list.json` |
+| `group` | integer ≥ 1, optional | Cells on the same layer with the same `list` and `group` always get the same entry. Without it the cell rolls on its own |
+
+How the entry is picked is specified in [randomness.md](randomness.md).
+
+## List files
+
+A random list is its own file, `<id>.list.json`, so it can be shared, reused by many domains and reviewed in pull
+requests next to them. In the game repository list files live in `Resources/Domains/Lists/`.
+Schema: [list.schema.json](list.schema.json).
+
+```json
+{
+  "format": "qlippoth-list",
+  "version": 1,
+  "id": "weak_walls",
+  "name": "Weak walls",
+  "layer": "structure",
+  "icon": { "glyph": "W", "color": "#c0803a" },
+  "entries": [
+    { "id": "WallSolid", "weight": 3 },
+    { "id": "Grille", "weight": 1 }
+  ]
+}
+```
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `format` | string | yes | Always `"qlippoth-list"` |
+| `version` | integer | yes | List format version, `1` |
+| `id` | string | yes | Lowercase snake_case. Must match the file name. Domains refer to the list by it |
+| `name` | string | no | Display name in the editor |
+| `layer` | string | yes | `floor` (entries are tile ids), `structure` or `object` (entries are entity ids). A list is only used on its layer |
+| `icon` | object | no | `glyph` (1–2 characters) and `color` (`#rrggbb`): how list cells are drawn in the editor. The game ignores it |
+| `entries` | array | yes | The items to pick from, in order. `weight` is a whole number from 1 to 1000 (default 1); an entry with weight 3 is picked three times as often as one with weight 1 |
+
+## Not stored
 
 Atmosphere, gravity, lighting and entity rotation are not stored. The game decides them. Storing the atmosphere is
 proposed in [atmosphere.md](atmosphere.md).
@@ -109,6 +154,7 @@ A file is ready for the game when:
 2. there is exactly one `Entry` and at least one `QlippothSpot`,
 3. every marker stands on a floor tile and not inside a wall,
 4. every id exists in the game (the editor's Checks panel and the game's integration test both check this),
+   including every entry of every list the file uses, and those list files are in the game too,
 5. the Qlippoth using it has at least one objective (an `Objective` marker or an objective entity).
 
 ## Versioning
@@ -118,14 +164,16 @@ A file is ready for the game when:
 - Readers **must reject** files with a `version` newer than they know.
 - Readers **should accept** older versions by upgrading them step by step (1 → 2 → 3 …).
   The editor does this in `src/migrate.ts`; each step only rewrites raw JSON, so old files keep opening.
-- The editor always writes the newest version. Opening and saving an old file upgrades it.
+- The editor writes the **lowest** version that can hold the domain: version 1 while no random list is used, version 2
+  otherwise. Readers that only know version 1 keep working for domains without lists.
 - When opening a file, the editor tells the user which cells it had to drop (outside the map, bad key, unknown
   brush, unknown layer).
 
 | Version | Editor | Changes |
 |---|---|---|
 | 1 | 0.1.0 | First version: fixed brushes, four layers, four markers |
-| 2 | planned | Optional top-level `atmosphere` ([atmosphere.md](atmosphere.md)) and random brushes (roadmap stage 2) |
+| 2 | 0.2.0 | `list` brushes with optional `group`, referring to `.list.json` files ([randomness.md](randomness.md)) |
+| 3 | planned | Optional top-level `atmosphere` ([atmosphere.md](atmosphere.md)) |
 
 Any change to the format bumps `FORMAT_VERSION` in `src/document.ts`, adds an upgrade step in `src/migrate.ts` and a
 row here, and needs a matching change in the game reader. New marker ids are not a format change, but older game readers will warn about them.

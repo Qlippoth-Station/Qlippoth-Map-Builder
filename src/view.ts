@@ -1,5 +1,6 @@
 import { LAYERS, inBounds, type LayerId } from "./document";
-import { primaryId, type Brush } from "./brush";
+import { fixedBrush, type Brush } from "./brush";
+import type { TileList } from "./lists";
 import { clampRect, rectContains, type Editor, type Rect } from "./editor";
 import { iconOrigin } from "./palette";
 
@@ -126,6 +127,8 @@ export class MapView {
 
     // While a selection is being dragged its cells are drawn at the new place instead of the old one.
     const lifted = this.drag?.kind === "move" ? this.drag.origin : null;
+    // In preview, list cells show what they roll for the preview seed instead of the list icon.
+    const resolved = editor.previewCells();
     for (const layer of LAYERS) {
       if (!editor.visible[layer]) continue;
       ctx.globalAlpha = editor.dimInactive && layer !== editor.activeLayer ? 0.3 : 1;
@@ -133,8 +136,11 @@ export class MapView {
       for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
           if (lifted && rectContains(lifted, x, y)) continue;
-          const brush = cells.get(`${x},${y}`);
-          if (brush) this.drawBrush(layer, brush, ...this.cellToScreen(x, y), cell);
+          const key = `${x},${y}`;
+          const brush = cells.get(key);
+          if (!brush) continue;
+          const rolled = brush.kind === "list" ? resolved?.[layer].get(key) : undefined;
+          this.drawBrush(layer, rolled !== undefined ? fixedBrush(rolled) : brush, ...this.cellToScreen(x, y), cell);
         }
       }
     }
@@ -176,7 +182,11 @@ export class MapView {
   private drawBrush(layer: LayerId, brush: Brush, sx: number, sy: number, size: number): void {
     const { ctx } = this;
     const palette = this.editor.palette;
-    const item = palette.byLayer[layer].get(primaryId(brush));
+    if (brush.kind === "list") {
+      this.drawList(this.editor.lists.get(brush.list), brush.group, sx, sy, size);
+      return;
+    }
+    const item = palette.byLayer[layer].get(brush.id);
 
     if (item?.icon != null) {
       const [ax, ay] = iconOrigin(palette, item.icon);
@@ -255,6 +265,48 @@ export class MapView {
     ctx.setLineDash([6, 4]);
     ctx.strokeRect(sx + 1, sy + 1, w - 2, h - 2);
     ctx.restore();
+  }
+
+  /** A random list cell: the list's glyph on its color, dice dots in the corner and the group number if linked. */
+  private drawList(list: TileList | undefined, group: number | undefined, sx: number, sy: number, size: number): void {
+    const { ctx } = this;
+    const inset = size * 0.06;
+    ctx.fillStyle = list?.color ?? "rgba(220, 60, 60, 0.6)";
+    ctx.globalAlpha *= 0.9;
+    roundRect(ctx, sx + inset, sy + inset, size - inset * 2, size - inset * 2, size * 0.12);
+    ctx.fill();
+    ctx.globalAlpha /= 0.9;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([Math.max(2, size * 0.1), Math.max(2, size * 0.08)]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = `700 ${Math.max(8, size * (list && list.glyph.length > 1 ? 0.34 : 0.42))}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(list?.glyph ?? "?", sx + size / 2, sy + size / 2 + 1);
+
+    if (size < 16) return;
+    // Two dice dots: "this cell is random".
+    const dot = Math.max(1.2, size * 0.045);
+    ctx.beginPath();
+    ctx.arc(sx + size * 0.2, sy + size * 0.8, dot, 0, Math.PI * 2);
+    ctx.arc(sx + size * 0.3, sy + size * 0.7, dot, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (group === undefined) return;
+    // Linked cells: the group number on a dark badge in the top-right corner.
+    const label = String(group);
+    ctx.font = `600 ${Math.max(7, size * 0.26)}px system-ui, sans-serif`;
+    const width = Math.max(size * 0.3, ctx.measureText(label).width + size * 0.12);
+    const height = size * 0.3;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    roundRect(ctx, sx + size - width - inset, sy + inset, width, height, height / 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, sx + size - inset - width / 2, sy + inset + height / 2 + 0.5);
   }
 
   private drawOverlay(accent: string): void {
@@ -336,7 +388,7 @@ export class MapView {
 
       const editor = this.editor;
       const layer = editor.activeLayer;
-      const brush = editor.tool === "erase" ? null : editor.selectedBrush();
+      const brush = editor.tool === "erase" ? null : editor.strokeBrush();
       switch (editor.tool) {
         case "select":
           // Starting inside the selection moves it with its contents; anywhere else starts a new selection.
@@ -458,7 +510,7 @@ export class MapView {
     for (const layer of order) {
       const brush = editor.visible[layer] ? editor.get(layer, x, y) : null;
       if (brush) {
-        editor.select(layer, primaryId(brush));
+        editor.select(layer, brush);
         return;
       }
     }

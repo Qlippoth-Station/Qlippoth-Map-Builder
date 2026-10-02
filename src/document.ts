@@ -25,7 +25,8 @@ export interface DomainDocument {
 }
 
 export const FORMAT_ID = "qlippoth-domain";
-export const FORMAT_VERSION = 1;
+/** Newest version the editor reads and writes. */
+export const FORMAT_VERSION = 2;
 export const MIN_SIZE = 1;
 export const MAX_SIZE = 256;
 
@@ -52,6 +53,15 @@ export function clampSize(value: number): number {
   return Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(value)));
 }
 
+/**
+ * The lowest format version that can hold the document. Files are written with it, so a domain that uses no
+ * version 2 feature stays readable by version 1 readers (the first game reader, stage 4a).
+ */
+export function requiredVersion(doc: DomainDocument): number {
+  for (const layer of LAYERS) for (const brush of doc.layers[layer].values()) if (brush.kind === "list") return 2;
+  return 1;
+}
+
 export function serialize(doc: DomainDocument): string {
   const layers: Record<string, Record<string, Brush>> = {};
   for (const layer of LAYERS) {
@@ -66,7 +76,7 @@ export function serialize(doc: DomainDocument): string {
     layers[layer] = cells;
   }
   return JSON.stringify(
-    { format: FORMAT_ID, version: FORMAT_VERSION, name: doc.name, width: doc.width, height: doc.height, layers },
+    { format: FORMAT_ID, version: requiredVersion(doc), name: doc.name, width: doc.width, height: doc.height, layers },
     null,
     2
   ) + "\n";
@@ -110,7 +120,8 @@ export function parseDocument(text: string): ParseResult {
     for (const [key, value] of Object.entries(cells)) {
       const [x, y] = parseKey(key);
       const brush = parseBrush(value);
-      if (!brush || cellKey(x, y) !== key) invalid++;
+      // Markers are always fixed: the game needs to know exactly where they are.
+      if (!brush || cellKey(x, y) !== key || (layer === "marker" && brush.kind !== "fixed")) invalid++;
       else if (!inBounds(document, x, y)) outside++;
       else document.layers[layer].set(key, brush);
     }

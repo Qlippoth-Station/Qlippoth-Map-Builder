@@ -15,6 +15,11 @@ Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved 
 4. Place one **Entry** and one **Qlippoth spot** marker. The *Checks* panel lists anything that is missing.
 5. **Save** downloads a `.domain.json` file. Open it again later or add it to a pull request.
 
+**Random lists** let a cell be "one of these" instead of one fixed item, for example a *Weak walls* list of walls that
+can be broken and a *Strong walls* list of walls that cannot. Each list has its own icon on the map, can roll every
+cell on its own or give a group of cells the same pick, and is saved as its own `.list.json` file to share and to add
+to pull requests next to the domain. See [Random lists](docs/user-guide.md#random-lists).
+
 Press `?` in the editor for all shortcuts. The [user guide](docs/user-guide.md) covers everything in detail.
 
 ## Getting a domain into the game
@@ -45,9 +50,9 @@ Listed in the order the work is done.
 | 1 | Palette from game data, layered grid editor, fixed brushes, save/open, checks | ✅ |
 | 0 | Groundwork: tests in CI, JSON schema, format fixtures, version upgrades, brush logic in one module | ✅ |
 | 4a | Game side, first slice: `RecipeDungeon` reads version 1 files (fixed brushes and markers). Done on the editor side: side-by-side repository layout, files in `Resources/Domains/`, `npm run domains` check | ⏳ |
-| 2 | Tile sets and random modes (weak / default / full / chance) with roll scope (cell / group / map), seeded preview. Starts with a written randomness spec and seeded test vectors shared with the game | ⏳ |
+| 2 | Random lists (`.list.json`, own icon, weights), per-cell or same-pick groups, seeded preview; roll spec and test vectors shared with the game ([randomness.md](docs/randomness.md)) | ✅ |
 | 3 | Templates, template sets, connection points, rotate/mirror, compatibility checks | ⏳ |
-| 4b | Game side: reads stage 2 and 3 files and resolves randomness with the same seeded RNG, checked against the shared test vectors | ⏳ |
+| 4b | Game side: reads random lists and rolls them with the same algorithm, checked against the shared test vectors ([steps](docs/game-side-tasks.md#stage-4b-random-lists)) | ⏳ |
 | – | Choose the atmosphere per domain in the editor ([proposal](docs/atmosphere.md)) | ⏳ |
 | 5 | Fully random domains built from the same template library | ⏳ |
 
@@ -86,6 +91,8 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | `src/document.ts` | Domain document model and file format |
 | `src/brush.ts` | Brush kinds and everything that depends on their shape |
 | `src/migrate.ts` | Upgrades older file versions to the current one |
+| `src/lists.ts`, `src/listsDialog.ts` | Random lists: model, `.list.json` files, the Lists dialog |
+| `src/resolve.ts` | Seeded roll of list cells, the spec shared with the game |
 | `src/editor.ts` | Editor state, edits, undo/redo, checks |
 | `src/view.ts` | Canvas rendering, camera and tool input |
 | `src/ui.ts` | Side panels and top bar |

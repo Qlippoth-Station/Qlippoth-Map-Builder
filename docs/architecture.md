@@ -9,7 +9,12 @@ canvas. There is no framework, no backend and no runtime dependency.
 |---|---|
 | `index.html` | Page shell with `<div id="app">` |
 | `src/main.ts` | Startup, actions (new/open/save), dialogs, autosave, keyboard shortcuts |
-| `src/document.ts` | `DomainDocument` model, `serialize` / `deserialize`, format constants |
+| `src/document.ts` | `DomainDocument` model, `serialize` / `parseDocument`, format constants |
+| `src/brush.ts` | The `Brush` union (fixed, list) and everything that depends on its shape |
+| `src/migrate.ts` | Upgrades older file versions step by step |
+| `src/lists.ts` | Random lists: model, `.list.json` read/write, ids |
+| `src/resolve.ts` | The seeded roll of list cells ([randomness.md](randomness.md)); shared spec with the game |
+| `src/listsDialog.ts` | The Lists dialog: create, edit, import, export |
 | `src/editor.ts` | `Editor`: state, edits, undo/redo, change notifications, checks |
 | `src/view.ts` | `MapView`: canvas rendering, camera, mouse input for tools |
 | `src/ui.ts` | Left sidebar (tools, layers, view, checks), palette panel, top bar |
@@ -33,8 +38,16 @@ canvas. There is no framework, no backend and no runtime dependency.
 ### Document
 
 `DomainDocument` holds the name, size and one sparse `Map<"x,y", Brush>` per layer. A `Brush` is
-`{ kind: "fixed", id }` today; the union will grow in stage 2. `serialize` writes cells sorted by `y`, then `x`.
-`deserialize` rejects other formats and versions, and drops cells that are out of bounds or have an unknown brush kind.
+`{ kind: "fixed", id }` or `{ kind: "list", list, group? }` (see `src/brush.ts`). `serialize` writes cells sorted by
+`y`, then `x`, with the lowest format version that holds them. `parseDocument` upgrades older versions, rejects newer
+ones, and reports the cells it drops (out of bounds, unknown brush kind, list brushes on the marker layer).
+
+### Random lists
+
+Lists are not part of the document: `Editor.lists` is the user's library (stored in `localStorage` and imported or
+exported as `.list.json` files), and cells refer to lists by id. `Editor.strokeBrush()` gives each stroke its own
+`group` when *Same pick* is on; `linkSelection()` does the same for a selection. `previewCells()` runs
+`resolveDocument` for the preview seed and caches it until the document or the lists change.
 
 ### Editor and undo
 
@@ -61,6 +74,7 @@ one update. Topics:
 | `selection` | Active layer, tool or selected item changed |
 | `view` | Grid, dimming or layer visibility changed |
 | `history` | Undo/redo stacks or the saved state changed |
+| `lists` | A list was added, changed or removed |
 
 Panels subscribe and redraw only for the topics they show. Checks are re-run 150 ms after the last cell change.
 
@@ -91,5 +105,6 @@ warning can be clicked. If the game must enforce it too, add it to `QlippothDoma
 **A new tool:** add it to `TOOLS` and `TOOL_INFO` in `src/editor.ts` (pick a free key) and handle it in the
 `pointerdown` handler in `src/view.ts`. Wrap multi-cell edits in one stroke.
 
-**A new brush kind (stage 2):** extend the `Brush` union in `src/document.ts`, bump `FORMAT_VERSION`, update `deserialize`
-to read both versions, and update [format.md](format.md) and the game reader.
+**A new brush kind:** extend the `Brush` union in `src/brush.ts` and let the type checker lead you through the switches
+there, add it to `parseBrush`, bump `FORMAT_VERSION` with a step in `src/migrate.ts`, make `requiredVersion` return the
+new version when the kind is used, and update [format.md](format.md), the schema, the fixtures and the game reader.

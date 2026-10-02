@@ -1,0 +1,158 @@
+{
+  "hashes": [
+    {
+      "text": "",
+      "hash": 2872998923
+    },
+    {
+      "text": "a",
+      "hash": 444641715
+    },
+    {
+      "text": "0/floor/1,0",
+      "hash": 853709212
+    },
+    {
+      "text": "12345/structure/weak_walls/group1",
+      "hash": 2251896573
+    }
+  ],
+  "results": [
+    {
+      "seed": 0,
+      "rolls": {
+        "floor": {
+          "1,0": "FloorSteel",
+          "3,0": "FloorSteel",
+          "5,0": "Plating",
+          "0,1": "FloorSteelDirty",
+          "2,1": "FloorSteel",
+          "4,1": "FloorSteelDirty",
+          "1,2": "FloorSteel",
+          "3,2": "FloorSteel",
+          "5,2": "FloorSteel",
+          "0,3": "FloorSteelDirty",
+          "2,3": "FloorSteel",
+          "4,3": "Plating"
+        },
+        "structure": {
+          "0,0": "Girder",
+          "1,0": "WallSolid",
+          "2,0": "WallSolid",
+          "3,0": "WallSolid",
+          "4,0": "WallSolid",
+          "5,0": "WallPlastitanium",
+          "0,3": "WallReinforced",
+          "1,3": "WallReinforced",
+          "2,3": "WallReinforced",
+          "3,3": "WallReinforced",
+          "4,3": "WallSolid"
+        },
+        "object": {},
+        "marker": {}
+      }
+    },
+    {
+      "seed": 1,
+      "rolls": {
+        "floor": {
+          "1,0": "Plating",
+          "3,0": "FloorSteel",
+          "5,0": "FloorSteel",
+          "0,1": "FloorSteelDirty",
+          "2,1": "FloorSteelDirty",
+          "4,1": "FloorSteelDirty",
+          "1,2": "Plating",
+          "3,2": "FloorSteel",
+          "5,2": "FloorSteel",
+          "0,3": "Plating",
+          "2,3": "FloorSteel",
+          "4,3": "FloorSteel"
+        },
+        "structure": {
+          "0,0": "Girder",
+          "1,0": "Girder",
+          "2,0": "WallSolid",
+          "3,0": "WallSolid",
+          "4,0": "WallSolid",
+          "5,0": "WallReinforced",
+          "0,3": "WallPlastitanium",
+          "1,3": "WallPlastitanium",
+          "2,3": "WallPlastitanium",
+          "3,3": "WallPlastitanium",
+          "4,3": "Girder"
+        },
+        "object": {},
+        "marker": {}
+      }
+    },
+    {
+      "seed": 12345,
+      "rolls": {
+        "floor": {
+          "1,0": "FloorSteelDirty",
+          "3,0": "Plating",
+          "5,0": "FloorSteel",
+          "0,1": "FloorSteel",
+          "2,1": "Plating",
+          "4,1": "FloorSteel",
+          "1,2": "FloorSteel",
+          "3,2": "FloorSteelDirty",
+          "5,2": "FloorSteel",
+          "0,3": "FloorSteel",
+          "2,3": "FloorSteel",
+          "4,3": "Plating"
+        },
+        "structure": {
+          "0,0": "WallSolid",
+          "1,0": "WallSolid",
+          "2,0": "Grille",
+          "3,0": "Grille",
+          "4,0": "Grille",
+          "5,0": "WallReinforced",
+          "0,3": "WallPlastitanium",
+          "1,3": "WallPlastitanium",
+          "2,3": "WallPlastitanium",
+          "3,3": "WallPlastitanium",
+          "4,3": "Grille"
+        },
+        "object": {},
+        "marker": {}
+      }
+    },
+    {
+      "seed": 4294967295,
+      "rolls": {
+        "floor": {
+          "1,0": "FloorSteel",
+          "3,0": "FloorSteelDirty",
+          "5,0": "FloorSteel",
+          "0,1": "FloorSteel",
+          "2,1": "Plating",
+          "4,1": "Plating",
+          "1,2": "FloorSteel",
+          "3,2": "FloorSteel",
+          "5,2": "FloorSteel",
+          "0,3": "FloorSteel",
+          "2,3": "Plating",
+          "4,3": "FloorSteelDirty"
+        },
+        "structure": {
+          "0,0": "Girder",
+          "1,0": "WallSolid",
+          "2,0": "WallSolid",
+          "3,0": "WallSolid",
+          "4,0": "WallSolid",
+          "5,0": "WallPlastitanium",
+          "0,3": "WallPlastitanium",
+          "1,3": "WallPlastitanium",
+          "2,3": "WallReinforced",
+          "3,3": "WallReinforced",
+          "4,3": "WallSolid"
+        },
+        "object": {},
+        "marker": {}
+      }
+    }
+  ]
+}

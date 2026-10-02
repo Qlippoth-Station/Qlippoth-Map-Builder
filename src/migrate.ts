@@ -7,7 +7,10 @@ export type FileData = Record<string, unknown>;
 export type Migration = (data: FileData) => FileData;
 
 /** MIGRATIONS[n] upgrades a version n file to version n + 1. */
-export const MIGRATIONS: Readonly<Record<number, Migration>> = {};
+export const MIGRATIONS: Readonly<Record<number, Migration>> = {
+  // 2 adds list brushes ({ "kind": "list", ... }). Every version 1 file is already a valid version 2 file.
+  1: (data) => data,
+};
 
 /** Runs the steps from the file's version up to `target`. Throws for versions it cannot read. */
 export function migrate(data: FileData, target: number, migrations: Readonly<Record<number, Migration>> = MIGRATIONS): FileData {

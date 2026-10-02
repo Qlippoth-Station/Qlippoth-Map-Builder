@@ -91,12 +91,15 @@ So **domain files plug in as a second `QlippothDungeon` implementation.** Nothin
    Domain files always live in `Resources/Domains/` (subfolders are fine). The first game-side PR creates the folder.
    The game reads it by its content path (`/Domains/...`).
 3. Use lowercase file names with underscores (`yellow_palace.domain.json`). Content paths are case sensitive on Linux servers.
-4. With both repositories side by side in the same folder (see the README), check every domain file from the editor
+4. If the domain uses **random lists**, export them in the editor (**Lists → Export lists used by this domain**) and
+   put them in `Resources/Domains/Lists/<id>.list.json`. Such domains are format version 2 and need the stage 4b
+   reader ([game-side-tasks.md](game-side-tasks.md#stage-4b-random-lists)); domains without lists are saved as version 1.
+5. With both repositories side by side in the same folder (see the README), check every domain file from the editor
    repository before committing:
 
    ```bash
    npm run palette   # once, or after pulling the game
-   npm run domains   # schema, bounds, Entry / QlippothSpot, markers on floor, ids that exist in the game
+   npm run domains   # schema, bounds, Entry / QlippothSpot, markers on floor, ids that exist in the game, lists
    ```
 
 Commit the file as is. The editor writes cells sorted by `y`, then `x`, so later edits produce small diffs.
@@ -503,8 +506,9 @@ The grid is created empty by `CreateRiftDungeon`, so cells without a floor tile 
 - **Prototype ids.** The editor palette is rebuilt from the game's `main` branch every day (see [palette.md](palette.md)).
   If an id is renamed in the game, open the domain in the editor: the Checks panel lists it as unknown. Repaint those
   cells and save again. The integration test catches the same problem on the game side.
-- **Format version.** The game reader and the editor must agree on `version`. When the editor bumps the version
-  (stage 2), update `QlippothDomainFile` in the same release and keep reading the old version if old files exist.
+- **Format version.** The game reader and the editor must agree on `version`. The editor saves the lowest version
+  that holds the domain: 1 without random lists, 2 with them. The reader above only reads version 1; stage 4b extends
+  it to version 2 and must keep reading version 1.
 - **Which game commit was used?** The editor status bar shows `palette @ <commit>`, the game commit the palette was
   built from. Mention it in the PR if a domain uses new prototypes.
 
@@ -517,13 +521,14 @@ The grid is created empty by `CreateRiftDungeon`, so cells without a floor tile 
 | Players arrive in space | `Entry` marker missing or on a cell without floor. The editor's Checks panel warns about both |
 | Rift cannot be closed | No objectives were placed, so the gate kept its default objective count. Add `Objective` markers |
 | Objective entity does nothing | It was spawned without a gate link. Make sure the `RecipeDungeon` code above uses `PlaceObjective` for it |
-| `unsupported domain format version` | The file was saved by a newer editor than the game reader supports |
+| `unsupported domain format version` | The file was saved by a newer editor than the game reader supports. Version 2 means the domain uses random lists, which need the stage 4b reader |
 
 ## What changes in later stages
 
-- **Stage 2 (random brushes):** cells can hold a set brush instead of a fixed id. `QlippothDomainFile` gets a
-  second brush kind, and `RecipeDungeon` resolves randomness with a seeded RNG. The editor's preview must use the same RNG
-  algorithm so the preview matches the game.
+- **Random lists (editor stage 2 is done; game stage 4b):** cells can hold a list brush instead of a fixed id.
+  `QlippothDomainFile` reads version 2, list files are loaded from `/Domains/Lists/`, and `RecipeDungeon` rolls them
+  with the algorithm in [randomness.md](randomness.md) so the editor's preview with the same seed matches the game.
+  The steps are in [game-side-tasks.md](game-side-tasks.md#stage-4b-random-lists).
 - **Stage 3 (templates):** smaller domains with `Connection` markers are combined. A new `QlippothDungeon`
   implementation (for example `TemplateSetDungeon`) chains templates by their connections.
 - **Stage 5 (fully random domains):** built from the same template library.

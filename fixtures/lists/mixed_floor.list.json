@@ -1,0 +1,25 @@
+{
+  "format": "qlippoth-list",
+  "version": 1,
+  "id": "mixed_floor",
+  "name": "Mixed floor",
+  "layer": "floor",
+  "icon": {
+    "glyph": "F",
+    "color": "#3f8f6a"
+  },
+  "entries": [
+    {
+      "id": "FloorSteel",
+      "weight": 5
+    },
+    {
+      "id": "FloorSteelDirty",
+      "weight": 2
+    },
+    {
+      "id": "Plating",
+      "weight": 1
+    }
+  ]
+}

@@ -1,15 +1,18 @@
 import "./style.css";
 import { LAYERS, LAYER_NAMES, clampSize, createDocument, parseDocument, serialize, type DomainDocument } from "./document";
-import { primaryId } from "./brush";
 import { TOOLS, TOOL_INFO, Editor } from "./editor";
 import { clear, h } from "./dom";
 import { loadPalette, type Palette } from "./palette";
-import { buildPalettePanel, buildSidebar, buildTopBar } from "./ui";
+import { brushName, buildPalettePanel, buildSidebar, buildTopBar, newSeed } from "./ui";
+import { parseList, serializeList, type TileList } from "./lists";
+import { buildListsDialog, importListFiles } from "./listsDialog";
 import { MapView, isTyping } from "./view";
 
 const AUTOSAVE_KEY = "qlippoth-domain-builder.autosave";
 /** An autosave that could not be read is moved here instead of being overwritten by the next autosave. */
 const UNREADABLE_AUTOSAVE_KEY = "qlippoth-domain-builder.autosave.unreadable";
+/** The user's random lists, as an array of .list.json texts. */
+const LISTS_KEY = "qlippoth-domain-builder.lists";
 const app = document.getElementById("app")!;
 
 // Browser storage can be missing or throw (private mode, blocked site data); the editor works without it.
@@ -18,6 +21,22 @@ function readAutosave(): string | null {
     return localStorage.getItem(AUTOSAVE_KEY);
   } catch {
     return null;
+  }
+}
+
+function readListLibrary(): TileList[] {
+  try {
+    const texts: unknown = JSON.parse(localStorage.getItem(LISTS_KEY) ?? "[]");
+    if (!Array.isArray(texts)) return [];
+    return texts.flatMap((text) => {
+      try {
+        return [parseList(String(text))];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return [];
   }
 }
 
@@ -55,6 +74,10 @@ function fileName(name: string): string {
 function start(palette: Palette): void {
   const initial = initialDocument();
   const editor = new Editor(palette, initial.doc);
+  for (const list of readListLibrary()) editor.lists.set(list.id, list);
+  editor.subscribe((topics) => {
+    if (topics.has("lists")) writeAutosave(JSON.stringify([...editor.lists.values()].map(serializeList)), LISTS_KEY);
+  });
   if (initial.notice) setTimeout(() => window.alert(initial.notice), 0);
   const stage = h("section", { class: "stage" });
   const status = h("footer", { class: "statusbar" });
@@ -82,41 +105,59 @@ function start(palette: Palette): void {
     const contents = LAYERS.map((layer) => {
       const brush = editor.get(layer, x, y);
       if (!brush) return null;
-      const id = primaryId(brush);
-      return `${LAYER_NAMES[layer]}: ${palette.byLayer[layer].get(id)?.name ?? id}`;
+      return `${LAYER_NAMES[layer]}: ${brushName(editor, layer, brush)}`;
     }).filter(Boolean);
     hoverText.textContent = `${x}, ${y}${contents.length ? "  ·  " + contents.join("  ·  ") : ""}`;
   };
 
   const confirmDiscard = () => !editor.dirty || window.confirm("You have unsaved changes. Discard them?");
 
+  function download(name: string, text: string) {
+    const blob = new Blob([text], { type: "application/json" });
+    const link = h("a", { href: URL.createObjectURL(blob), download: name });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
+  function pickFiles(accept: string, multiple: boolean): Promise<File[]> {
+    return new Promise((resolve) => {
+      const input = h("input", { type: "file", accept, multiple });
+      input.addEventListener("change", () => resolve([...(input.files ?? [])]));
+      input.addEventListener("cancel", () => resolve([]));
+      input.click();
+    });
+  }
+
   const actions = {
     newDocument() {
       showNewDialog();
     },
-    open() {
-      if (!confirmDiscard()) return;
-      const input = h("input", { type: "file", accept: ".json,application/json" });
-      input.addEventListener("change", async () => {
-        const file = input.files?.[0];
-        if (!file) return;
+    /** Opens a domain, list files, or both at once (a domain from a pull request together with its lists). */
+    async open() {
+      const files = await pickFiles(".json,application/json", true);
+      const lists = files.filter((file) => file.name.endsWith(".list.json"));
+      const domains = files.filter((file) => !file.name.endsWith(".list.json"));
+      const report = lists.length ? await importListFiles(editor, lists) : [];
+      if (domains.length > 1) report.push(`Only one domain can be open at a time; opened ${domains[0].name}.`);
+      const file = domains[0];
+      if (file && confirmDiscard()) {
         try {
           const { document, problems } = parseDocument(await file.text());
           editor.replaceDocument(document);
           view.fit();
-          if (problems.length) window.alert(`${file.name} was opened, but some of it could not be read:\n\n${problems.join("\n")}`);
+          if (problems.length) report.push(`${file.name} was opened, but some of it could not be read:`, ...problems);
         } catch (error) {
-          window.alert(`Could not open ${file.name}: ${(error as Error).message}`);
+          report.push(`Could not open ${file.name}: ${(error as Error).message}`);
         }
-      });
-      input.click();
+      }
+      if (report.length && (domains.length === 0 || report.some((line) => !line.endsWith("already loaded.")))) window.alert(report.join("\n"));
     },
     save() {
-      const blob = new Blob([serialize(editor.doc)], { type: "application/json" });
-      const link = h("a", { href: URL.createObjectURL(blob), download: fileName(editor.doc.name) });
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      download(fileName(editor.doc.name), serialize(editor.doc));
       editor.markSaved();
+    },
+    manageLists() {
+      showListsDialog();
     },
     showCredits() {
       showCreditsDialog();
@@ -172,6 +213,12 @@ function start(palette: Palette): void {
     name.select();
   }
 
+  function showListsDialog() {
+    const body = h("div", { class: "lists-dialog" });
+    openDialog("Random lists", body);
+    buildListsDialog(editor, body, { download, pickFiles }, () => dialog.open);
+  }
+
   function showHelpDialog() {
     const rows: [string, string][] = [
       ...TOOLS.map((tool): [string, string] => [TOOL_INFO[tool].key, TOOL_INFO[tool].name]),
@@ -181,6 +228,9 @@ function start(palette: Palette): void {
       ["Arrows / Shift+Arrows", "Move the selection by 1 / 5 cells"],
       ["Delete", "Clear the selected area on every layer"],
       ["Esc", "Drop the selection"],
+      ["L / Shift+L", "Same pick for all list cells in the selection / undo that"],
+      ["P", "Random preview on / off"],
+      ["N", "New preview seed"],
       ["Space + drag / Middle drag", "Pan"],
       ["Wheel", "Zoom"],
       ["0", "Fit to view"],
@@ -287,6 +337,7 @@ function start(palette: Palette): void {
         return editor.clearSelection();
       }
       if (key === "escape") return editor.setSelection(null);
+      if (key === "l") return editor.linkSelection(!event.shiftKey);
     }
 
     const tool = TOOLS.find((id) => TOOL_INFO[id].key.toLowerCase() === key);
@@ -306,6 +357,12 @@ function start(palette: Palette): void {
       case "0":
         view.fit();
         break;
+      case "p":
+        editor.setPreview(editor.previewSeed === null ? newSeed() : null);
+        break;
+      case "n":
+        if (editor.previewSeed !== null) editor.setPreview(newSeed());
+        break;
       case "/":
         event.preventDefault();
         document.querySelector<HTMLInputElement>(".search")?.focus();
@@ -316,7 +373,7 @@ function start(palette: Palette): void {
   clear(
     app,
     buildTopBar(editor, actions),
-    h("main", { class: "workspace" }, buildSidebar(editor, view), stage, buildPalettePanel(editor)),
+    h("main", { class: "workspace" }, buildSidebar(editor, view), stage, buildPalettePanel(editor, actions)),
     status,
     dialog
   );
@@ -334,7 +391,7 @@ async function main() {
         { class: "fatal" },
         h("h1", {}, "Palette not found"),
         h("p", {}, "The editor needs a palette generated from the game repository. For local development run:"),
-        h("pre", {}, "npm run palette -- --game ../Qlippoth-station-14"),
+        h("pre", {}, "npm run palette   # with the game checked out next to this repository"),
         h("p", { class: "muted" }, String((error as Error).message))
       )
     );

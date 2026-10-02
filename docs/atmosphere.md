@@ -13,7 +13,7 @@ have to edit C# or remember to set it in YAML.
 ## Overview
 
 ```
- Editor                         .domain.json (version 2)          Game
+ Editor                         .domain.json (version 3)          Game
  ──────                         ────────────────────────          ────
  Atmosphere panel ──Save──►  "atmosphere": {                ──►  RecipeDungeon reads it
  preset / gases /              "preset": "custom",                 │
@@ -30,7 +30,7 @@ What wins, from strongest to weakest:
 
 So one domain can be reused by a Qlippoth that needs different air, and old domains keep today's behaviour.
 
-## 1. File format: an `atmosphere` field (format version 2)
+## 1. File format: an `atmosphere` field (format version 3)
 
 Domain files get an optional top-level `atmosphere` object:
 
@@ -65,9 +65,9 @@ Rules:
 - Unknown gas names are an error in the game reader and a warning in the editor.
 - More presets (for example `cold`, `hot`, `plasma`) can be added later without a version bump, as long as old readers treat unknown presets as an error rather than guessing.
 
-Adding the field is a format change, so `FORMAT_VERSION` goes to 2 (see [format.md](format.md#versioning)).
-The editor must keep opening version 1 files. Random brushes (roadmap stage 2) also need version 2; if both are being
-worked on, ship them in the same version.
+Adding the field is a format change, so `FORMAT_VERSION` goes to 3 (version 2 added random lists; see
+[format.md](format.md#versioning)). The editor keeps opening older files through `src/migrate.ts`, and only writes
+version 3 when a domain actually sets an atmosphere.
 
 ## 2. Editor
 
@@ -229,7 +229,7 @@ This is much more work on both sides. It should wait until whole-domain atmosphe
 
 | Step | Where | Size | Depends on |
 |---|---|---|---|
-| 1. `atmosphere` field in the format (version 2), schema, editor panel and checks | Editor | Medium | — |
+| 1. `atmosphere` field in the format (version 3), schema, editor panel and checks | Editor | Medium | — |
 | 2. `QlippothRiftAtmosphere`, layout field, override where rift air is set up | Game | Small | — |
 | 3. `RecipeDungeon` reads `atmosphere` from the file, YAML override | Game | Small | 1, 2, stage 4 of the roadmap |
 | 4. Atmosphere zones (`atmos` layer) | Both | Large | 3 |

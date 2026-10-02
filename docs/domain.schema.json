@@ -1,48 +1,138 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Qlippoth-Station/Qlippoth-Map-Builder/blob/main/docs/domain.schema.json",
-  "title": "Qlippoth domain file, version 1",
-  "description": "A rift domain made with the Qlippoth Domain Builder. See docs/format.md. Bounds of cell keys against width/height cannot be expressed here and must be checked separately.",
+  "title": "Qlippoth domain file, versions 1 and 2",
+  "description": "A rift domain made with the Qlippoth Domain Builder. See docs/format.md. Version 2 adds list brushes. Bounds of cell keys against width/height, and list brushes only appearing in version 2 files, cannot be expressed here and must be checked separately.",
   "type": "object",
-  "required": ["format", "version", "width", "height", "layers"],
+  "required": [
+    "format",
+    "version",
+    "width",
+    "height",
+    "layers"
+  ],
   "additionalProperties": false,
   "properties": {
-    "format": { "const": "qlippoth-domain" },
-    "version": { "const": 1 },
-    "name": { "type": "string" },
-    "width": { "type": "integer", "minimum": 1, "maximum": 256 },
-    "height": { "type": "integer", "minimum": 1, "maximum": 256 },
+    "format": {
+      "const": "qlippoth-domain"
+    },
+    "version": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256
+    },
     "layers": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "floor": { "$ref": "#/$defs/layer" },
-        "structure": { "$ref": "#/$defs/layer" },
-        "object": { "$ref": "#/$defs/layer" },
+        "floor": {
+          "$ref": "#/$defs/layer"
+        },
+        "structure": {
+          "$ref": "#/$defs/layer"
+        },
+        "object": {
+          "$ref": "#/$defs/layer"
+        },
         "marker": {
-          "$ref": "#/$defs/layer",
           "type": "object",
+          "description": "Markers are always fixed brushes.",
+          "propertyNames": {
+            "$ref": "#/$defs/cellKey"
+          },
           "additionalProperties": {
-            "type": "object",
-            "properties": { "id": { "enum": ["Entry", "QlippothSpot", "Objective", "Connection"] } }
+            "$ref": "#/$defs/fixedBrush",
+            "properties": {
+              "id": {
+                "enum": [
+                  "Entry",
+                  "QlippothSpot",
+                  "Objective",
+                  "Connection"
+                ]
+              }
+            },
+            "type": "object"
           }
         }
       }
     }
   },
   "$defs": {
+    "cellKey": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*),(0|[1-9][0-9]*)$"
+    },
     "layer": {
       "type": "object",
-      "propertyNames": { "pattern": "^(0|[1-9][0-9]*),(0|[1-9][0-9]*)$" },
-      "additionalProperties": { "$ref": "#/$defs/brush" }
+      "propertyNames": {
+        "$ref": "#/$defs/cellKey"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/brush"
+      }
     },
     "brush": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/fixedBrush"
+        },
+        {
+          "$ref": "#/$defs/listBrush"
+        }
+      ]
+    },
+    "fixedBrush": {
       "type": "object",
-      "required": ["kind", "id"],
+      "required": [
+        "kind",
+        "id"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": { "const": "fixed" },
-        "id": { "type": "string", "minLength": 1 }
+        "kind": {
+          "const": "fixed"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "listBrush": {
+      "description": "Version 2. One entry of the random list with this id, see docs/randomness.md. Cells of the same list with the same group get the same entry.",
+      "type": "object",
+      "required": [
+        "kind",
+        "list"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "list"
+        },
+        "list": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"
+        },
+        "group": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     }
   }

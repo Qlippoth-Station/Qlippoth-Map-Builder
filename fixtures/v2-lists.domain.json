@@ -1,0 +1,176 @@
+{
+  "format": "qlippoth-domain",
+  "version": 2,
+  "name": "Fixture: random lists",
+  "width": 6,
+  "height": 4,
+  "layers": {
+    "floor": {
+      "0,0": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "1,0": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "2,0": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "3,0": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "4,0": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "5,0": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "0,1": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "1,1": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "2,1": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "3,1": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "4,1": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "5,1": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "0,2": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "1,2": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "2,2": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "3,2": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "4,2": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "5,2": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "0,3": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "1,3": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "2,3": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "3,3": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      },
+      "4,3": {
+        "kind": "list",
+        "list": "mixed_floor"
+      },
+      "5,3": {
+        "kind": "fixed",
+        "id": "FloorSteel"
+      }
+    },
+    "structure": {
+      "0,0": {
+        "kind": "list",
+        "list": "weak_walls"
+      },
+      "1,0": {
+        "kind": "list",
+        "list": "weak_walls"
+      },
+      "2,0": {
+        "kind": "list",
+        "list": "weak_walls",
+        "group": 1
+      },
+      "3,0": {
+        "kind": "list",
+        "list": "weak_walls",
+        "group": 1
+      },
+      "4,0": {
+        "kind": "list",
+        "list": "weak_walls",
+        "group": 1
+      },
+      "5,0": {
+        "kind": "list",
+        "list": "strong_walls"
+      },
+      "0,3": {
+        "kind": "list",
+        "list": "strong_walls",
+        "group": 1
+      },
+      "1,3": {
+        "kind": "list",
+        "list": "strong_walls",
+        "group": 1
+      },
+      "2,3": {
+        "kind": "list",
+        "list": "strong_walls",
+        "group": 2
+      },
+      "3,3": {
+        "kind": "list",
+        "list": "strong_walls",
+        "group": 2
+      },
+      "4,3": {
+        "kind": "list",
+        "list": "weak_walls",
+        "group": 2
+      },
+      "5,3": {
+        "kind": "fixed",
+        "id": "WallSolid"
+      }
+    },
+    "object": {},
+    "marker": {
+      "1,1": {
+        "kind": "fixed",
+        "id": "Entry"
+      },
+      "4,2": {
+        "kind": "fixed",
+        "id": "QlippothSpot"
+      }
+    }
+  }
+}

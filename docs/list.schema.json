@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Qlippoth-Station/Qlippoth-Map-Builder/blob/main/docs/list.schema.json",
+  "title": "Qlippoth random list file, version 1",
+  "description": "A random list (.list.json) made with the Qlippoth Domain Builder. See docs/format.md. The file name must be <id>.list.json.",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "id",
+    "layer",
+    "entries"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "qlippoth-list"
+    },
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "layer": {
+      "enum": [
+        "floor",
+        "structure",
+        "object"
+      ]
+    },
+    "icon": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "glyph": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 1
+          }
+        }
+      }
+    }
+  }
+}

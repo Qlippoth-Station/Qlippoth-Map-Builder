@@ -1,7 +1,7 @@
 {
   "name": "qlippoth-domain-builder",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Web-based visual editor for Qlippoth Station rift domains.",
   "license": "MIT",
   "type": "module",

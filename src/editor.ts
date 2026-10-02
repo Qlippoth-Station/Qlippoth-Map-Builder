@@ -7,7 +7,9 @@ import {
   type DomainDocument,
   type LayerId,
 } from "./document";
-import { brushIds, fixedBrush, sameBrush, type Brush } from "./brush";
+import { baseBrush, brushIds, listBrush, sameBrush, type Brush, type ListLookup } from "./brush";
+import { isListLayer, type TileList } from "./lists";
+import { resolveDocument } from "./resolve";
 import type { Palette } from "./palette";
 
 export const TOOLS = ["brush", "rect", "fill", "erase", "pick", "select"] as const;
@@ -35,7 +37,7 @@ export function rectContains(rect: Rect, x: number, y: number): boolean {
 }
 
 /** What changed, so views only redo the work they need. */
-export type Topic = "cells" | "document" | "selection" | "view" | "history";
+export type Topic = "cells" | "document" | "selection" | "view" | "history" | "lists";
 
 type Change =
   | { type: "cell"; layer: LayerId; key: string; before: Brush | null; after: Brush | null }
@@ -51,7 +53,18 @@ export class Editor {
   doc: DomainDocument;
   activeLayer: LayerId = "floor";
   tool: ToolId = "brush";
-  selected: Record<LayerId, string | null> = { floor: null, structure: null, object: null, marker: null };
+  /** What the palette has selected per layer: a fixed item or a random list (never with a group). */
+  selected: Record<LayerId, Brush | null> = { floor: null, structure: null, object: null, marker: null };
+  /**
+   * The user's library of random lists, by id. It is not part of the document: domains refer to lists by id and
+   * lists travel as their own .list.json files.
+   */
+  lists = new Map<string, TileList>();
+  readonly listLookup: ListLookup = (id) => this.lists.get(id);
+  /** When on, every stroke painted with a list becomes one group: all its cells get the same random pick. */
+  sameChoice = false;
+  /** Seed of the random preview, or null when the map shows list icons. */
+  previewSeed: number | null = null;
   visible: Record<LayerId, boolean> = { floor: true, structure: true, object: true, marker: true };
   dimInactive = false;
   showGrid = true;
@@ -67,6 +80,8 @@ export class Editor {
   private listeners = new Set<(topics: Set<Topic>) => void>();
   private queued = new Set<Topic>();
   private flushScheduled = false;
+  private previewCache: { key: string; cells: Record<LayerId, Map<string, string>> } | null = null;
+  private listsRevision = 0;
 
   constructor(readonly palette: Palette, doc: DomainDocument) {
     this.doc = doc;
@@ -106,8 +121,9 @@ export class Editor {
     this.emit("selection");
   }
 
-  select(layer: LayerId, id: string | null): void {
-    this.selected[layer] = id;
+  select(layer: LayerId, brush: Brush | null): void {
+    if (brush && brush.kind === "list" && !isListLayer(layer)) return;
+    this.selected[layer] = brush ? baseBrush(brush) : null;
     this.activeLayer = layer;
     this.visible[layer] = true;
     if (this.tool === "erase" || this.tool === "pick") this.tool = "brush";
@@ -115,8 +131,93 @@ export class Editor {
   }
 
   selectedBrush(): Brush | null {
-    const id = this.selected[this.activeLayer];
-    return id ? fixedBrush(id) : null;
+    return this.selected[this.activeLayer];
+  }
+
+  /** The brush a new stroke paints with: with "same choice" on, a list brush gets a group of its own. */
+  strokeBrush(): Brush | null {
+    const brush = this.selectedBrush();
+    if (brush?.kind !== "list" || !this.sameChoice) return brush;
+    return listBrush(brush.list, this.nextGroup(this.activeLayer, brush.list));
+  }
+
+  setSameChoice(on: boolean): void {
+    this.sameChoice = on;
+    this.emit("selection");
+  }
+
+  /** A group number not used yet by this list on this layer. */
+  nextGroup(layer: LayerId, list: string): number {
+    let max = 0;
+    for (const brush of this.doc.layers[layer].values()) {
+      if (brush.kind === "list" && brush.list === list && brush.group !== undefined) max = Math.max(max, brush.group);
+    }
+    return max + 1;
+  }
+
+  // ---- Random lists ----------------------------------------------------------------------------
+
+  /** Adds a list to the library or replaces the one with the same id. */
+  setList(list: TileList): void {
+    this.lists.set(list.id, list);
+    this.listsRevision++;
+    this.emit("lists", "view");
+  }
+
+  removeList(id: string): void {
+    if (!this.lists.delete(id)) return;
+    this.listsRevision++;
+    for (const layer of LAYERS) {
+      const selected = this.selected[layer];
+      if (selected?.kind === "list" && selected.list === id) this.selected[layer] = null;
+    }
+    this.emit("lists", "selection", "view");
+  }
+
+  /** Ids of the lists the document uses, loaded or not. */
+  usedLists(): Set<string> {
+    const used = new Set<string>();
+    for (const layer of LAYERS) for (const brush of this.doc.layers[layer].values()) if (brush.kind === "list") used.add(brush.list);
+    return used;
+  }
+
+  setPreview(seed: number | null): void {
+    this.previewSeed = seed;
+    this.emit("view");
+  }
+
+  /** The concrete id of every cell for the preview seed (cached until the document or the lists change). */
+  previewCells(): Record<LayerId, Map<string, string>> | null {
+    if (this.previewSeed === null) return null;
+    const key = `${this.revision}/${this.listsRevision}/${this.previewSeed}`;
+    if (this.previewCache?.key !== key) this.previewCache = { key, cells: resolveDocument(this.doc, this.listLookup, this.previewSeed) };
+    return this.previewCache.cells;
+  }
+
+  /**
+   * Links the list cells inside the selection: per layer and list they become one new group, so they all get the
+   * same random pick. With `link` false the groups are removed and every cell rolls on its own again.
+   */
+  linkSelection(link: boolean): void {
+    const rect = this.selection;
+    if (!rect) return;
+    this.beginStroke();
+    for (const layer of LAYERS) {
+      const groups = new Map<string, number>();
+      for (let y = rect.y; y < rect.y + rect.h; y++) {
+        for (let x = rect.x; x < rect.x + rect.w; x++) {
+          const brush = this.get(layer, x, y);
+          if (brush?.kind !== "list") continue;
+          if (!link) {
+            this.set(layer, x, y, listBrush(brush.list));
+            continue;
+          }
+          if (!groups.has(brush.list)) groups.set(brush.list, this.nextGroup(layer, brush.list));
+          this.set(layer, x, y, listBrush(brush.list, groups.get(brush.list)));
+        }
+      }
+    }
+    this.endStroke();
   }
 
   // ---- Editing ---------------------------------------------------------------------------------
@@ -332,8 +433,9 @@ export class Editor {
   validate(): Warning[] {
     const warnings: Warning[] = [];
     const markers = this.doc.layers.marker;
+    const ids = (brush: Brush) => brushIds(brush, this.listLookup);
     const positions = (id: string) =>
-      [...markers.entries()].filter(([, brush]) => brushIds(brush).includes(id)).map(([key]) => parseKey(key));
+      [...markers.entries()].filter(([, brush]) => ids(brush).includes(id)).map(([key]) => parseKey(key));
 
     const entries = positions("Entry");
     if (entries.length === 0) warnings.push({ message: "No Entry marker." });
@@ -344,19 +446,35 @@ export class Editor {
       const [x, y] = parseKey(key);
       if (!this.doc.layers.floor.has(key)) warnings.push({ message: "Marker without a floor tile.", at: [x, y] });
       const structure = this.doc.layers.structure.get(key);
-      if (structure && brushIds(structure).some((id) => this.palette.byLayer.structure.get(id)?.category === "Structures/Walls")) {
+      if (structure && ids(structure).some((id) => this.palette.byLayer.structure.get(id)?.category === "Structures/Walls")) {
         warnings.push({ message: "Marker inside a wall.", at: [x, y] });
       }
     }
 
     for (const layer of LAYERS) {
       const missing = new Map<string, [number, number]>();
+      const listsUsed = new Map<string, [number, number]>();
       for (const [key, brush] of this.doc.layers[layer]) {
-        for (const id of brushIds(brush)) {
-          if (!this.palette.byLayer[layer].has(id) && !missing.has(id)) missing.set(id, parseKey(key));
+        if (brush.kind === "list") {
+          if (!listsUsed.has(brush.list)) listsUsed.set(brush.list, parseKey(key));
+          continue;
         }
+        if (!this.palette.byLayer[layer].has(brush.id) && !missing.has(brush.id)) missing.set(brush.id, parseKey(key));
       }
       for (const [id, at] of missing) warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette).`, at });
+
+      for (const [id, at] of listsUsed) {
+        const list = this.lists.get(id);
+        if (!list) {
+          warnings.push({ message: `List "${id}" is not loaded. Import its .list.json file (Lists).`, at });
+          continue;
+        }
+        if (list.layer !== layer) warnings.push({ message: `List "${list.name}" is for the ${list.layer} layer but is used on ${layer}.`, at });
+        if (list.entries.length === 0) warnings.push({ message: `List "${list.name}" is empty.`, at });
+        for (const entry of list.entries) {
+          if (!this.palette.byLayer[list.layer].has(entry.id)) warnings.push({ message: `Unknown ${list.layer} id "${entry.id}" in list "${list.name}".`, at });
+        }
+      }
     }
     return warnings;
   }

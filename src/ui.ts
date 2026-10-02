@@ -2,6 +2,9 @@ import { LAYERS, LAYER_NAMES, MAX_SIZE, MIN_SIZE, type LayerId } from "./documen
 import { TOOLS, TOOL_INFO, type Editor, type Topic } from "./editor";
 import { clear, h } from "./dom";
 import { iconOrigin, type Palette, type PaletteItem } from "./palette";
+import { isListLayer, type TileList } from "./lists";
+import { listBrush, type Brush } from "./brush";
+import { normalizeSeed } from "./resolve";
 import type { MapView } from "./view";
 
 const PALETTE_LIMIT = 400;
@@ -20,6 +23,26 @@ export function icon(palette: Palette, item: PaletteItem | undefined, id?: strin
     return element;
   }
   return h("span", { class: "icon unknown", title: id ? `Unknown id: ${id}` : "Empty" }, id ? "?" : "");
+}
+
+/** The icon a random list shows in the palette and on the map. */
+export function listIcon(list: TileList | undefined, id?: string): HTMLElement {
+  if (!list) return h("span", { class: "icon unknown list-icon", title: id ? `List not loaded: ${id}` : "" }, "?");
+  const element = h("span", { class: "icon glyph list-icon" }, list.glyph);
+  element.style.backgroundColor = list.color;
+  return element;
+}
+
+/** Human-readable name of what a cell holds, for the status bar. */
+export function brushName(editor: Editor, layer: LayerId, brush: Brush): string {
+  switch (brush.kind) {
+    case "fixed":
+      return editor.palette.byLayer[layer].get(brush.id)?.name ?? brush.id;
+    case "list": {
+      const name = `random from ${editor.lists.get(brush.list)?.name ?? brush.list}`;
+      return brush.group === undefined ? name : `${name} (same pick as group ${brush.group})`;
+    }
+  }
 }
 
 // ---- Left sidebar: tools, layers, view options, warnings -------------------------------------------
@@ -98,11 +121,53 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
       h("kbd", {}, shortcut)
     );
 
-  const renderOptions = () =>
+  const renderOptions = () => {
+    const seedFocused = document.activeElement?.classList.contains("seed-input") ?? false;
+    renderOptionsContent();
+    // A new seed re-renders the panel; keep the cursor in the seed field the user was typing in.
+    if (seedFocused) options.querySelector<HTMLInputElement>(".seed-input")?.focus();
+  };
+
+  const renderOptionsContent = () =>
     clear(
       options,
       checkbox("Grid", "showGrid", "G"),
       checkbox("Dim other layers", "dimInactive", "D"),
+      h(
+        "label",
+        { class: "check", title: "Show what random list cells roll for a seed, the way the game picks them" },
+        h("input", {
+          type: "checkbox",
+          checked: editor.previewSeed !== null,
+          onchange: (event: Event) => editor.setPreview((event.target as HTMLInputElement).checked ? newSeed() : null),
+        }),
+        h("span", {}, "Random preview"),
+        h("kbd", {}, "P")
+      ),
+      editor.previewSeed !== null
+        ? h(
+            "div",
+            { class: "seed" },
+            h(
+              "label",
+              { title: "The game logs the seed of every rift; type it here to see that rift" },
+              h("span", {}, "Seed"),
+              h("input", {
+                type: "number",
+                min: 0,
+                max: 4294967295,
+                value: String(editor.previewSeed),
+                class: "seed-input",
+                "aria-label": "Preview seed",
+                onchange: (event: Event) => {
+                  const value = Number((event.target as HTMLInputElement).value);
+                  if (Number.isFinite(value)) editor.setPreview(normalizeSeed(value));
+                },
+              })
+            ),
+            h("button", { class: "secondary", title: "Roll again with a new seed (N)", onclick: () => editor.setPreview(newSeed()) }, "Reroll")
+          )
+        : null,
       h("button", { class: "secondary", onclick: () => view.fit(), title: "Fit map to view (0)" }, "Fit to view")
     );
 
@@ -135,7 +200,7 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
     if (topics.has("selection")) renderTools();
     if (topics.has("selection") || topics.has("view") || topics.has("cells") || topics.has("document")) renderLayers();
     if (topics.has("view")) renderOptions();
-    if (topics.has("cells") || topics.has("document")) renderWarnings();
+    if (topics.has("cells") || topics.has("document") || topics.has("lists")) renderWarnings();
   });
 
   return h(
@@ -150,7 +215,12 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
 
 // ---- Right sidebar: palette ------------------------------------------------------------------------
 
-export function buildPalettePanel(editor: Editor): HTMLElement {
+/** A random seed for the preview, in the unsigned 32-bit range the game uses. */
+export function newSeed(): number {
+  return Math.floor(Math.random() * 2 ** 32);
+}
+
+export function buildPalettePanel(editor: Editor, actions: { manageLists(): void }): HTMLElement {
   const palette = editor.palette;
   const search = h("input", { type: "search", placeholder: "Search name or id  ( / )", "aria-label": "Search palette", class: "search" });
   const category = h("select", { "aria-label": "Category" });
@@ -158,6 +228,7 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
   const title = h("h2", {});
   const selected = h("div", { class: "selected-item" });
   const more = h("p", { class: "more" });
+  const lists = h("section", { class: "palette-lists" });
 
   let shownLayer: LayerId | null = null;
 
@@ -167,7 +238,28 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
   };
 
   const renderSelected = () => {
-    const id = editor.selected[editor.activeLayer];
+    const brush = editor.selected[editor.activeLayer];
+    if (brush?.kind === "list") {
+      const list = editor.lists.get(brush.list);
+      clear(
+        selected,
+        listIcon(list, brush.list),
+        h(
+          "div",
+          { class: "selected-text" },
+          h("strong", {}, list ? `Random: ${list.name}` : brush.list),
+          h("code", {}, list ? `${list.entries.length} entries · ${list.id}` : "List not loaded"),
+          h(
+            "label",
+            { class: "check same-choice", title: "Every stroke (brush drag, rectangle or fill) gets one random pick for all its cells" },
+            h("input", { type: "checkbox", checked: editor.sameChoice, onchange: (event: Event) => editor.setSameChoice((event.target as HTMLInputElement).checked) }),
+            h("span", {}, "Same pick for the whole stroke")
+          )
+        )
+      );
+      return;
+    }
+    const id = brush?.id ?? null;
     const item = id ? palette.byLayer[editor.activeLayer].get(id) : undefined;
     clear(
       selected,
@@ -190,7 +282,8 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
         (!category.value || item.category === category.value) &&
         (!query || item.name.toLowerCase().includes(query) || item.id.toLowerCase().includes(query))
     );
-    const current = editor.selected[editor.activeLayer];
+    const selectedBrush = editor.selected[editor.activeLayer];
+    const current = selectedBrush?.kind === "fixed" ? selectedBrush.id : null;
     clear(
       list,
       ...matches.slice(0, PALETTE_LIMIT).map((item) =>
@@ -201,7 +294,7 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
             role: "option",
             "aria-selected": String(item.id === current),
             title: `${item.name}\n${item.id}\n${item.category}`,
-            onclick: () => editor.select(item.layer, item.id),
+            onclick: () => editor.select(item.layer, { kind: "fixed", id: item.id }),
           },
           icon(palette, item),
           h("span", { class: "palette-name" }, item.name)
@@ -212,6 +305,49 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
       matches.length > PALETTE_LIMIT ? `Showing ${PALETTE_LIMIT} of ${matches.length}. Search to narrow down.` : matches.length === 0 ? "No matches." : "";
   };
 
+  const renderLists = () => {
+    const layer = editor.activeLayer;
+    if (!isListLayer(layer)) {
+      clear(lists);
+      lists.hidden = true;
+      return;
+    }
+    lists.hidden = false;
+    const query = search.value.trim().toLowerCase();
+    const selectedBrush = editor.selected[layer];
+    const current = selectedBrush?.kind === "list" ? selectedBrush.list : null;
+    const matches = [...editor.lists.values()]
+      .filter((list) => list.layer === layer && (!query || list.name.toLowerCase().includes(query) || list.id.includes(query)))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    clear(
+      lists,
+      h(
+        "header",
+        {},
+        h("h3", {}, "Random lists"),
+        h("button", { class: "ghost", title: "Create, edit, import and export lists", onclick: () => actions.manageLists() }, "Manage…")
+      ),
+      matches.length
+        ? h(
+            "div",
+            { class: "palette-list lists-grid" },
+            ...matches.map((list) =>
+              h(
+                "button",
+                {
+                  class: `palette-item${list.id === current ? " active" : ""}`,
+                  title: `${list.name} (${list.id})\n${list.entries.length} entries: ${list.entries.map((entry) => entry.id).join(", ")}`,
+                  onclick: () => editor.select(layer, listBrush(list.id)),
+                },
+                listIcon(list),
+                h("span", { class: "palette-name" }, list.name)
+              )
+            )
+          )
+        : h("p", { class: "muted small" }, query ? "No lists match." : `No ${LAYER_NAMES[layer].toLowerCase()} lists yet. Use Manage… to create or import one.`)
+    );
+  };
+
   const render = () => {
     title.textContent = `${LAYER_NAMES[editor.activeLayer]} palette`;
     if (shownLayer !== editor.activeLayer) {
@@ -219,22 +355,35 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
       renderCategories();
     }
     renderSelected();
+    renderLists();
     renderList();
   };
 
-  search.addEventListener("input", renderList);
+  search.addEventListener("input", () => {
+    renderLists();
+    renderList();
+  });
   category.addEventListener("change", renderList);
   render();
   editor.subscribe((topics) => {
-    if (topics.has("selection")) render();
+    if (topics.has("selection") || topics.has("lists")) render();
   });
 
-  return h("aside", { class: "sidebar right" }, h("section", {}, title, selected), h("section", { class: "palette-filters" }, search, category), list, more);
+  return h(
+    "aside",
+    { class: "sidebar right" },
+    h("section", {}, title, selected),
+    h("section", { class: "palette-filters" }, search, category),
+    lists,
+    list,
+    more
+  );
 }
 
 // ---- Top bar ---------------------------------------------------------------------------------------
 
 export interface TopBarActions {
+  manageLists(): void;
   newDocument(): void;
   open(): void;
   save(): void;
@@ -289,6 +438,7 @@ export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement
       h("button", { class: "secondary", title: "Open .json (Ctrl+O)", onclick: () => actions.open() }, "Open"),
       saveButton
     ),
+    h("button", { class: "secondary", title: "Random lists: create, import, export", onclick: () => actions.manageLists() }, "Lists"),
     h("button", { class: "ghost", onclick: () => actions.showHelp(), title: "Shortcuts" }, "?"),
     h("button", { class: "ghost", onclick: () => actions.showCredits() }, "Credits")
   );

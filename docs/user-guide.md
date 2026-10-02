@@ -106,6 +106,63 @@ The right panel lists the items of the active layer.
 
 The palette is built from the game repository and follows it automatically. See [palette.md](palette.md).
 
+## Random lists
+
+Some cells should not always be the same thing. A **random list** is a named list of items, for example:
+
+- *Weak walls*: walls players can break through,
+- *Strong walls*: walls that can never be passed,
+- *Mixed floor*: mostly steel, sometimes dirty steel or plating.
+
+Paint with a list instead of an item, and the game picks one entry of the list for that cell every time it builds the
+rift. On the map, list cells show the list's **icon** (its letter on its color, with two dice dots) instead of an item.
+
+### Making a list
+
+1. Click **Lists** in the top bar (or **Manage…** above the palette).
+2. A list belongs to one layer (Floor, Structure or Object). New lists take the active layer; change **Layer** while
+   the list is still empty if needed.
+3. **New list**, give it a name. Its id (`weak_walls`) and file name (`weak_walls.list.json`) come from the name.
+4. Choose an **icon** (one or two characters) and a **color**.
+5. Search for items under the entry table and click them to add them.
+6. **Weight** sets how often an entry is picked compared to the others: weight 3 next to two entries of weight 1 is
+   picked 60 % of the time. The *Chance* column shows the result.
+
+Lists are kept in this browser and are not tied to a domain. Every domain you make can use them.
+
+### Painting with a list
+
+On the Floor, Structure or Object layer, the palette shows your lists for that layer under **Random lists**. Pick one
+and paint with Brush, Rectangle or Fill as usual. Pick (`I` or right click) on a list cell selects the list again.
+
+By default **every cell rolls on its own**: five weak walls in a row can become five different walls.
+
+### Same pick for a group of cells
+
+Sometimes cells should be random but **the same**: a whole wall segment that is either all solid or all grille.
+
+- Tick **Same pick for the whole stroke** under the selected list. Every stroke you paint after that (one brush drag,
+  one rectangle, one fill) becomes one **group**: the game picks once for the group and all its cells get that item.
+  Grouped cells show the group number in their corner.
+- For cells that are already painted: select them with **Select** (`S`) and press `L`. The list cells in the selection
+  become one group (per list). `Shift+L` removes the group again, so every cell rolls on its own.
+
+### Random preview
+
+Tick **Random preview** (`P`) in the View panel to see what the list cells become, rolled exactly the way the game
+rolls them. **Reroll** (`N`) tries another seed. The game logs the seed of every rift it builds; type it into **Seed**
+to see exactly that rift. Turn the preview off to see and edit the list icons again.
+
+### Sharing lists
+
+A domain only refers to its lists by id; the lists themselves are separate `.list.json` files.
+
+- **Export**: in the Lists dialog, **Export .list.json** saves one list, and **Export lists used by this domain**
+  saves every list the open domain uses. Add those files to the pull request next to the domain.
+- **Import**: **Import…** in the Lists dialog, or simply **Open** the domain together with its list files (select them
+  all in the file picker). If a different list with the same id is already loaded, the editor asks before replacing it.
+- A domain whose list is not loaded shows `List "…" is not loaded` in Checks; its cells show a red `?`.
+
 ## Resizing
 
 Change **W** or **H** in the top bar. Resizing keeps the bottom-left corner fixed. Cells that end up outside the new
@@ -119,7 +176,8 @@ size are removed. Undo brings them back.
   when you open the editor again. It is a safety net, not a replacement for **Save**: it is lost if you clear site
   data, and it only keeps one domain. Private windows may not keep it at all.
 - **Save** (`Ctrl+S`) downloads the file. The status bar says whether there are unsaved changes since the last save.
-- **Open** (`Ctrl+O`) loads a `.domain.json` file. The editor asks before throwing away unsaved changes.
+- **Open** (`Ctrl+O`) loads a `.domain.json` file, and any `.list.json` files selected with it. The editor asks before throwing away unsaved changes.
+- Your random lists are stored in this browser separately from the domain and are kept when you open or create domains.
 - Undo history is cleared when you open or create a domain.
 
 ## Checks
@@ -133,6 +191,8 @@ The Checks panel updates as you paint. It reports:
 | Marker without a floor tile | Players or objectives would end up in space |
 | Marker inside a wall | Players would spawn stuck in a wall |
 | Unknown id | The id is not in the current palette, usually because it was renamed or removed in the game |
+| List not loaded | The domain uses a list this browser does not have. Import its `.list.json` |
+| List used on the wrong layer / empty list / unknown id in a list | The game could not place anything sensible for those cells |
 
 A clean Checks panel is expected for files submitted to the game. If a warning is intentional, explain it in the pull request.
 
@@ -149,6 +209,8 @@ Press `?` in the editor (top bar) to see this list.
 | Arrows / `Shift` + arrows | Move the selection by 1 / 5 cells |
 | `Delete` | Clear the selected area on every layer |
 | `Esc` | Drop the selection |
+| `L` / `Shift+L` | Same pick for all list cells in the selection / remove that |
+| `P` / `N` | Random preview on/off / new preview seed |
 | `Space` + drag / middle drag | Pan |
 | Wheel | Zoom |
 | `0` | Fit to view |
@@ -159,7 +221,8 @@ Press `?` in the editor (top bar) to see this list.
 
 ## Sharing a domain
 
-There is no server. To share a domain, send the `.domain.json` file or add it to a pull request in the game repository.
+There is no server. To share a domain, send the `.domain.json` file or add it to a pull request in the game repository,
+together with the `.list.json` files of any random lists it uses (**Lists → Export lists used by this domain**).
 [game-integration.md](game-integration.md) explains where it goes and how the game uses it.
 
 ## Credits

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import Ajv from "ajv/dist/2020";
 import basicFixture from "../fixtures/v1-basic.domain.json?raw";
+import listsFixture from "../fixtures/v2-lists.domain.json?raw";
 import schemaText from "../docs/domain.schema.json?raw";
 import { FORMAT_VERSION, cellKey, createDocument, deserialize, parseDocument, serialize } from "./document";
-import { fixedBrush } from "./brush";
+import { fixedBrush, listBrush } from "./brush";
 
 const validate = new Ajv({ allErrors: true }).compile(JSON.parse(schemaText));
 
@@ -20,8 +21,18 @@ function file(overrides: Record<string, unknown> = {}): string {
 }
 
 describe("serialize / deserialize", () => {
-  it("round-trips the fixture byte for byte", () => {
+  it("round-trips the fixtures byte for byte", () => {
     expect(serialize(deserialize(basicFixture))).toBe(basicFixture);
+    expect(serialize(deserialize(listsFixture))).toBe(listsFixture);
+  });
+
+  it("writes the lowest version that holds the document", () => {
+    const doc = createDocument("Version", 2, 1);
+    doc.layers.floor.set("0,0", fixedBrush("FloorSteel"));
+    expect(JSON.parse(serialize(doc)).version).toBe(1);
+    doc.layers.floor.set("1,0", listBrush("mixed_floor", 2));
+    expect(JSON.parse(serialize(doc)).version).toBe(2);
+    expect(JSON.parse(serialize(doc)).layers.floor["1,0"]).toEqual({ kind: "list", list: "mixed_floor", group: 2 });
   });
 
   it("writes files that match the JSON schema", () => {
@@ -30,6 +41,7 @@ describe("serialize / deserialize", () => {
     doc.layers.marker.set(cellKey(1, 2), fixedBrush("Entry"));
     expect(validate(JSON.parse(serialize(doc))), JSON.stringify(validate.errors)).toBe(true);
     expect(validate(JSON.parse(basicFixture)), JSON.stringify(validate.errors)).toBe(true);
+    expect(validate(JSON.parse(listsFixture)), JSON.stringify(validate.errors)).toBe(true);
   });
 
   it("sorts cells by y, then x", () => {
@@ -38,8 +50,8 @@ describe("serialize / deserialize", () => {
     expect(Object.keys(JSON.parse(serialize(doc)).layers.floor)).toEqual(["1,0", "0,1", "2,1", "0,2"]);
   });
 
-  it("writes the current format version", () => {
-    expect(JSON.parse(serialize(createDocument("V", 1, 1))).version).toBe(FORMAT_VERSION);
+  it("never writes a version newer than it knows", () => {
+    expect(JSON.parse(serialize(deserialize(listsFixture))).version).toBeLessThanOrEqual(FORMAT_VERSION);
   });
 });
 
@@ -63,7 +75,7 @@ describe("parseDocument", () => {
           floor: { "0,0": { kind: "fixed", id: "A" }, "9,9": { kind: "fixed", id: "B" } },
           structure: { "1,1": { kind: "mystery" }, "01,1": { kind: "fixed", id: "C" } },
           object: {},
-          marker: {},
+          marker: { "2,2": { kind: "list", list: "weak_walls" } },
           extra: {},
         },
       })
@@ -73,6 +85,7 @@ describe("parseDocument", () => {
     expect(problems).toEqual([
       "1 floor cell(s) outside the map were dropped.",
       "2 structure cell(s) with an unknown key or brush were dropped.",
+      "1 marker cell(s) with an unknown key or brush were dropped.",
       'Unknown layer "extra" was skipped.',
     ]);
   });

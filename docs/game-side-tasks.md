@@ -2,7 +2,7 @@
 
 This is the to-do list for the code that has to be written in the **game repository**
 ([Qlippoth-station-14](https://github.com/Qlippoth-Station/Qlippoth-station-14)) so the game can load domain files.
-It covers roadmap stage **4a** in full and lists what later stages will add.
+It covers roadmap stage **4a** (reading domains) and **4b** (random lists) in full, and lists what later stages will add.
 
 [game-integration.md](game-integration.md) explains *how* domain files plug into the game and holds the reference C#.
 This page says *in which order* to do the work, what each step is done with, and how to tell it is finished.
@@ -190,17 +190,89 @@ It catches file-name and schema problems in seconds instead of after a full game
 **Stage 4a is done** when a Qlippoth in the game's `main` branch builds its rift from a domain file and the
 integration test guards every file in `Resources/Domains/`.
 
-## Later stages (not part of 4a)
+## Stage 4b: random lists
 
-These depend on editor work that has not been done yet. They are listed so the 4a code does not block them.
+The editor side is done (roadmap stage 2): cells can hold `{ "kind": "list", "list": "weak_walls", "group": 1 }`,
+lists are `.list.json` files, and the roll is specified in [randomness.md](randomness.md) with test vectors in
+[`fixtures/`](../fixtures). Start after 4a is merged; nothing in 4a has to be undone.
+
+| # | Step | Where (game repository) | Done when |
+|---|---|---|---|
+| 1 | Add the lists folder | `Resources/Domains/Lists/` | `npm run domains` passes for the lists |
+| 2 | Read list files | `Content.Server/Qlippoth/QlippothDomainList.cs` | Unit tests pass |
+| 3 | Read version 2 domains | `QlippothDomainFile.cs` | Unit tests pass, version 1 still reads |
+| 4 | Port the roll | `Content.Server/Qlippoth/QlippothDomainRandom.cs` | Matches `fixtures/v2-lists.rolls.json` |
+| 5 | Roll in `RecipeDungeon` | `RecipeDungeon.cs` | A domain with lists builds |
+| 6 | Check lists in `Validate` and the integration test | `QlippothDomainFile.cs`, `DomainFilesTest.cs` | Test fails on a missing or wrong list |
+| 7 | Test in game against the editor preview | – | Same seed, same layout |
+
+### 1. Add the lists folder
+
+Put the lists the domains use in `Resources/Domains/Lists/<id>.list.json`, exported from the editor with
+**Lists → Export lists used by this domain**. The file name must be the list id; ids are unique across the folder.
+
+### 2. Read list files
+
+A small class with `Id`, `Layer` and `Entries` (`(string Id, int Weight)` in file order), and a loader that reads
+every `*.list.json` under `/Domains/` once. Reject (with the file name in the message): a `format` other than
+`"qlippoth-list"`, a `version` other than 1, an id that does not match the file name, a layer other than
+`floor` / `structure` / `object`, a weight outside 1–1000 (missing means 1), and two files with the same id.
+Ignore `name` and `icon`; they are for the editor. Test it with `fixtures/lists/*.list.json`.
+
+### 3. Read version 2 domains
+
+- Accept `version` 1 and 2; still reject anything newer.
+- A cell is now either a fixed id or a list reference `(list, group?)`. A small record type keeps the dictionaries
+  simple, for example `record DomainCell(string? Id, string? List, int? Group)`.
+- Reject list brushes on the `marker` layer, a `group` below 1, and a list id that is not lowercase snake_case.
+- Unit tests: `fixtures/v2-lists.domain.json` parses (12 list cells on the floor, 11 on structure, groups on
+  `2,0`–`4,0`); the step 3 tests of 4a still pass for `v1-basic.domain.json`.
+
+### 4. Port the roll
+
+Copy `Hash32`, `RollKey` and `Pick` from [randomness.md](randomness.md#the-roll). Then copy
+`fixtures/v2-lists.rolls.json` into the test project and assert:
+
+- `Hash32(text)` equals every `hashes[].hash`,
+- for every `results[]` seed, rolling every list cell of `v2-lists.domain.json` with the fixture lists gives exactly
+  the ids in `rolls`.
+
+If one value differs, the port is wrong; do not change the vectors. Common mistakes: signed `int` instead of `uint`,
+formatting the seed with the current culture, rolling a group cell with its cell key instead of its group key.
+
+### 5. Roll in `RecipeDungeon`
+
+- Pick a seed per rift: `(uint) random.Next()` from `IRobustRandom`, or a fixed `seed` from a new optional YAML field
+  (useful for testing a layout).
+- Log it: `qlippoth.domain` info `"{Path} built with seed {seed}"`. Entering that seed in the editor's random preview
+  shows the same rift, which makes bug reports reproducible.
+- Before placing anything, turn every list cell into its rolled id; then build exactly as in 4a (floor grouped by
+  tile, entities at cell centres). Missing or empty lists: skip the cell and log a warning, like an unknown id.
+
+### 6. Check lists in `Validate` and the integration test
+
+`Validate` reports: a list that is not loaded, a list used on another layer than its own, an empty list, and list
+entries that are not real tiles or entities. The integration test from 4a step 5 then covers lists automatically;
+also make it load every list file once so a broken list fails even if no domain uses it yet.
+
+### 7. Test in game against the editor preview
+
+1. Give a test Qlippoth `seed: 12345` in YAML and open a rift.
+2. In the editor, open the same domain with its lists, turn on **Random preview** and type `12345` into **Seed**.
+3. Every random cell must match. Then remove the fixed seed.
+
+**Stage 4b is done** when a domain with random lists builds in the game, its rolls match the editor preview for the
+same seed, and the integration test guards every list file.
+
+## Later stages
+
+These depend on editor work that has not been done yet. They are listed so the 4a and 4b code does not block them.
 
 | Stage | Game-side work | Waits for |
 |---|---|---|
-| 4b | Read format version 2: set brushes and random modes. Port the seeded RNG exactly and test it with the seeded test vectors the editor adds to `fixtures/` | Stage 2 in the editor (randomness spec and test vectors) |
-| 4b | Keep reading version 1 files, or upgrade every file in `Resources/Domains/` by opening and saving it in the editor in the same PR | Stage 2 |
-| – | Apply a per-domain atmosphere from the file ([atmosphere.md](atmosphere.md)) | Format version with an `atmosphere` field |
+| – | Apply a per-domain atmosphere from the file ([atmosphere.md](atmosphere.md)) | Format version 3 with an `atmosphere` field |
 | 3 | A new `QlippothDungeon` implementation (for example `TemplateSetDungeon`) that joins templates at their `Connection` markers | Stage 3 in the editor |
 | 5 | Fully random domains from the template library | Stages 3 and 4b |
 
-The extension point stays `QlippothDungeon`, so later stages add new readers and dungeon types next to the 4a code
-instead of rewriting it.
+The extension point stays `QlippothDungeon`, so later stages add new readers and dungeon types next to the 4a and 4b
+code instead of rewriting it.
