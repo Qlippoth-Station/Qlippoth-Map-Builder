@@ -1,0 +1,93 @@
+name: Check game domains (reusable)
+
+# Called from the game repository to check its domain and list files with this editor's checks:
+#
+#   # .github/workflows/domains.yml in Qlippoth-station-14
+#   name: Domains
+#   on:
+#     pull_request:
+#       paths: ["Resources/Domains/**"]
+#       types: [opened, synchronize, reopened, labeled, unlabeled]
+#   jobs:
+#     domains:
+#       uses: Qlippoth-Station/Qlippoth-Map-Builder/.github/workflows/check-game-domains.yml@main
+#
+# It checks out the game and the editor side by side (the same layout as on a developer machine), builds the palette,
+# runs `npm run domains`, and for pull requests compares the lists with the base branch: changing the entries of an
+# existing list fails until a maintainer adds the `list-change-approved` label; removing a list that a domain still
+# uses always fails. See docs/game-side-tasks.md.
+
+on:
+  workflow_call:
+    inputs:
+      editor-repository:
+        description: Repository of the domain builder
+        type: string
+        default: Qlippoth-Station/Qlippoth-Map-Builder
+      editor-ref:
+        description: Branch, tag or commit of the domain builder to check with
+        type: string
+        default: main
+      approval-label:
+        description: Label that allows changing an existing list
+        type: string
+        default: list-change-approved
+
+permissions:
+  contents: read
+
+jobs:
+  domains:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the game (the calling repository)
+        uses: actions/checkout@v4
+        with:
+          path: Qlippoth-station-14
+          sparse-checkout: |
+            Resources/Prototypes
+            Resources/Textures
+            Resources/Locale/en-US
+            Resources/Domains
+
+      - name: Check out the game's base branch
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: game-base
+          sparse-checkout: Resources/Domains
+
+      - name: Check out the domain builder next to the game
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.editor-repository }}
+          ref: ${{ inputs.editor-ref }}
+          path: Qlippoth-Map-Builder
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Qlippoth-Map-Builder/package-lock.json
+
+      - name: Build the palette from the game
+        working-directory: Qlippoth-Map-Builder
+        run: |
+          npm ci
+          npm run palette
+
+      - name: Domain and list files
+        working-directory: Qlippoth-Map-Builder
+        run: npm run domains
+
+      - name: List changes
+        if: github.event_name == 'pull_request'
+        working-directory: Qlippoth-Map-Builder
+        env:
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, inputs.approval-label) }}
+        run: |
+          args=(--base ../game-base/Resources/Domains/Lists --head ../Qlippoth-station-14/Resources/Domains/Lists
+                --domains ../Qlippoth-station-14/Resources/Domains --summary "$GITHUB_STEP_SUMMARY")
+          if [ "$APPROVED" = "true" ]; then args+=(--approved); fi
+          node scripts/check-list-changes.mjs "${args[@]}"

@@ -1,5 +1,8 @@
 # Built-in lists
 
+**This folder is the source of truth for built-in lists.** The game gets copies (`npm run lists:sync`); change a list
+here, never only in the game.
+
 The `.list.json` files here ship with the editor. Everyone sees them in the palette, and they **cannot be changed or
 removed in the editor**: they are part of the game, and domains rely on them staying the same. To change one, edit the
 file here in a pull request.
@@ -13,6 +16,12 @@ file here in a pull request.
    next to this repository. `npm run domains` reports a game list that differs from the built-in one.
 
 Users cannot import or create a list with a built-in id, so a built-in id always means this file.
+
+## Changing a built-in list
+
+A pull request that changes the entries (or their order or weights) of an existing list here fails the
+**Built-in lists guard** check (`.github/workflows/lists-guard.yml`) until a maintainer adds the
+`list-change-approved` label. New lists and changes to only the name or icon pass. The run summary lists what changed.
 
 Changing a built-in list changes every domain that uses it the next time a rift is built, so prefer adding a new list
 over changing the entries of one that domains already use.

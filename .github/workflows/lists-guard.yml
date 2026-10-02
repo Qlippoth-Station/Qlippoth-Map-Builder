@@ -1,0 +1,38 @@
+name: Built-in lists guard
+
+# Built-in lists (lists/) are part of the game, and every domain that uses one changes when it changes.
+# This check fails a pull request that changes the entries of an existing built-in list, until a maintainer adds the
+# `list-change-approved` label. New lists and name or icon changes pass. The report is in the run summary.
+# See scripts/check-list-changes.mjs.
+
+on:
+  pull_request:
+    paths: ["lists/**"]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  lists:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          sparse-checkout: lists
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Compare built-in lists with the base branch
+        env:
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'list-change-approved') }}
+        run: |
+          args=(--base base/lists --head lists --summary "$GITHUB_STEP_SUMMARY")
+          if [ "$APPROVED" = "true" ]; then args+=(--approved); fi
+          node scripts/check-list-changes.mjs "${args[@]}"

@@ -166,7 +166,19 @@ to see exactly that rift. Turn the preview off to see and edit the list icons ag
 
 ### Sharing lists
 
-A domain only refers to its lists by id; the lists themselves are separate `.list.json` files.
+A domain only refers to its lists by id; the lists themselves are separate `.list.json` files. In the game they all
+live in one place: `Resources/Domains/Lists/`.
+
+**The lists folder (Chrome, Edge).** In the Lists dialog, **Connect lists folder…** and choose
+`Resources/Domains/Lists/` of your game checkout (the one next to this editor). From then on:
+
+- **Save to lists folder** writes a list there directly, and **Save lists used by this domain** writes all of them,
+- **Save** (`Ctrl+S`) on a domain also writes the lists of yours it uses into the folder,
+- **Load lists from folder** imports every list in it, for example after pulling the game.
+
+The editor remembers the folder; after a reload the browser asks once more (**Reconnect**). Built-in lists are never
+written: they reach the game separately. In other browsers lists are downloaded instead; move them into
+`Resources/Domains/Lists/` yourself. **Save** on a domain then reminds you when it uses lists of yours.
 
 - **Export**: in the Lists dialog, **Export .list.json** saves one list, and **Export lists used by this domain**
   saves every list the open domain uses. Add those files to the pull request next to the domain.

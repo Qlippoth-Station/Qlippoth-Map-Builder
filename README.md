@@ -92,6 +92,8 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | `scripts/check-domains.mjs` | Checks the domain files in the game checkout (schema, bounds, markers, ids) |
 | `scripts/game-dir.mjs` | Finds the game checkout (next to this repository by default) |
 | `scripts/sync-lists.mjs` | Copies the built-in lists into the game checkout |
+| `scripts/check-list-changes.mjs` | List guard for pull requests (changing a shared list needs the `list-change-approved` label) |
+| `.github/workflows/` | Deploy, built-in list guard, and a reusable workflow for the game's domain checks |
 | `lists/` | Built-in random lists (read-only in the editor) |
 | `assets/list-symbols/`, `assets/effects/` | Editor art: list symbols and the group effect |
 | `src/document.ts` | Domain document model and file format |

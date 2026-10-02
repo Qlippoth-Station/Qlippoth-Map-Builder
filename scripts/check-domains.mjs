@@ -8,7 +8,8 @@
 // checkout (`npm run palette`). This is the same list as the "validation checklist" in docs/format.md, so problems show
 // up here before the game's integration test or a rift finds them.
 //
-// Random lists (*.list.json, anywhere under Resources/Domains/, by convention in Lists/) must match
+// Random lists (*.list.json) must be directly in Resources/Domains/Lists/, so a list id always has one path and two
+// pull requests adding the same id conflict in git instead of silently overwriting each other. They must match
 // docs/list.schema.json, be named <id>.list.json, have unique ids and only hold ids the game has. Every list a domain
 // uses must exist and be for the layer it is used on.
 
@@ -17,6 +18,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import Ajv from "ajv/dist/2020.js";
 import { EDITOR_ROOT, findGame } from "./game-dir.mjs";
+import { LISTS_FOLDER, sameListContent } from "./lists-common.mjs";
+
+export { sameListContent };
 
 export const DOMAINS_FOLDER = "Domains";
 const LAYERS = ["floor", "structure", "object", "marker"];
@@ -63,11 +67,6 @@ export function readBuiltInLists() {
   return lists;
 }
 
-/** Same list content, ignoring formatting and the editor-only name and icon. */
-export function sameListContent(a, b) {
-  const content = (list) => JSON.stringify({ id: list.id, layer: list.layer, entries: list.entries.map((entry) => ({ ...entry, weight: entry.weight ?? 1 })) });
-  return content(a) === content(b);
-}
 
 /**
  * Problems in one domain file. `knownIds` maps a layer to the ids the game has (markers are checked by the schema);
@@ -142,7 +141,9 @@ function main() {
   const { game, resources } = findGame();
   const dir = path.join(resources, DOMAINS_FOLDER);
   const domainFiles = findFiles(dir, ".domain.json");
-  const listFiles = findFiles(dir, ".list.json");
+  // Lists in the right folder first, so a duplicate id is reported on the misplaced file.
+  const listsDir = path.join(dir, LISTS_FOLDER);
+  const listFiles = findFiles(dir, ".list.json").sort((a, b) => Number(path.dirname(a) !== listsDir) - Number(path.dirname(b) !== listsDir) || a.localeCompare(b));
   if (domainFiles.length + listFiles.length === 0) {
     console.log(`No domain or list files in ${path.relative(process.cwd(), dir) || dir}. Nothing to check.`);
     return;
@@ -164,6 +165,7 @@ function main() {
   const builtIn = readBuiltInLists();
   for (const file of listFiles) {
     const { list, problems } = checkList(fs.readFileSync(file, "utf8"), path.basename(file), knownIds);
+    if (path.dirname(file) !== listsDir) problems.push(`List files belong directly in Resources/${DOMAINS_FOLDER}/${LISTS_FOLDER}/ (no other folders), so each list id has exactly one path.`);
     if (list && lists.has(list.id)) problems.push(`Another list file already has the id "${list.id}".`);
     if (list && builtIn.has(list.id) && !sameListContent(list, builtIn.get(list.id))) {
       problems.push(`Differs from the editor's built-in list "${list.id}" (lists/${list.id}.list.json). Run \`npm run lists:sync\` or update the built-in list.`);

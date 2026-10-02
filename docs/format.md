@@ -99,7 +99,8 @@ How the entry is picked is specified in [randomness.md](randomness.md).
 ## List files
 
 A random list is its own file, `<id>.list.json`, so it can be shared, reused by many domains and reviewed in pull
-requests next to them. In the game repository list files live in `Resources/Domains/Lists/`.
+requests next to them. In the game repository list files live **directly** in `Resources/Domains/Lists/` (no
+subfolders), so a list id always has exactly one path and two pull requests adding the same id meet as a git conflict.
 Schema: [list.schema.json](list.schema.json).
 
 **Built-in lists** are the list files in `lists/` of the editor repository. They ship with the editor, cannot be

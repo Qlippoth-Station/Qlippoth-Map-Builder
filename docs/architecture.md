@@ -16,6 +16,7 @@ canvas. There is no framework, no backend and no runtime dependency.
 | `src/resolve.ts` | The seeded roll of list cells ([randomness.md](randomness.md)); shared spec with the game |
 | `src/listsDialog.ts` | The Lists dialog: create, edit, chances, import, export |
 | `src/builtinLists.ts` | Bundles the read-only lists in `lists/` |
+| `src/listFolder.ts` | The lists folder: saving lists into a folder on disk (File System Access API), remembered in IndexedDB |
 | `src/assets.ts` | Bundles and preloads list symbols (`assets/list-symbols/`) and map effects (`assets/effects/`) |
 | `lists/`, `assets/` | Built-in lists and editor art; added by dropping files in, see their READMEs |
 | `src/editor.ts` | `Editor`: state, edits, undo/redo, change notifications, checks |
@@ -28,6 +29,10 @@ canvas. There is no framework, no backend and no runtime dependency.
 | `scripts/check-domains.mjs` | Node script that checks the domain files in the game checkout |
 | `scripts/game-dir.mjs` | Finds the game checkout, next to this repository by default |
 | `scripts/sync-lists.mjs` | Copies the built-in lists into the game checkout |
+| `scripts/check-list-changes.mjs` | List guard: compares the lists of a pull request with its base branch |
+| `scripts/lists-common.mjs` | Dependency-free helpers shared by the list scripts |
+| `.github/workflows/lists-guard.yml` | Runs the list guard on pull requests that touch `lists/` |
+| `.github/workflows/check-game-domains.yml` | Reusable workflow the game repository calls to check its domain and list files |
 
 ## Data flow
 

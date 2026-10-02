@@ -22,6 +22,7 @@ import {
 } from "./lists";
 import { icon, listIcon } from "./ui";
 import { SYMBOLS } from "./assets";
+import { describeSave, folderSupported, readListFiles, type ListFolderLink } from "./listFolder";
 
 const SEARCH_LIMIT = 60;
 
@@ -33,6 +34,36 @@ function formatChance(percent: number): string {
 export interface ListsDialogHelpers {
   download(fileName: string, text: string): void;
   pickFiles(accept: string, multiple: boolean): Promise<File[]>;
+  folder: ListFolderLink;
+}
+
+/** Where list files go in the game, shown wherever the user is told where to put them. */
+export const GAME_LISTS_PATH = "Resources/Domains/Lists/";
+
+/**
+ * Saves lists where they belong: into the connected lists folder, or as downloads. Built-in lists are skipped; they
+ * reach the game through `npm run lists:sync`. Returns a line for the user.
+ */
+export async function saveListsSomewhere(lists: TileList[], helpers: ListsDialogHelpers): Promise<string> {
+  const link = helpers.folder;
+  if (link.folder && link.ready) {
+    try {
+      return describeSave(await link.saveLists(lists), link.folder.name);
+    } catch (error) {
+      return `Could not write to the lists folder: ${(error as Error).message}`;
+    }
+  }
+  const mine = lists.filter((list) => !list.builtIn);
+  for (const list of mine) helpers.download(listFileName(list), serializeList(list));
+  const builtIn = lists.length - mine.length;
+  return [
+    mine.length
+      ? `Downloaded ${mine.map(listFileName).join(", ")}. Move ${mine.length > 1 ? "them" : "it"} into ${GAME_LISTS_PATH} of the game${folderSupported() ? ", or connect that folder above to save there directly" : ""}.`
+      : "",
+    builtIn ? `${builtIn} built-in list(s) skipped: they are already in the game.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**
@@ -93,15 +124,71 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
     render();
   };
 
-  const exportUsed = () => {
+  const exportUsed = async () => {
     const used = [...editor.usedLists()];
     const loaded = used.map((id) => editor.lists.get(id)).filter((list): list is TileList => !!list);
-    for (const list of loaded) helpers.download(listFileName(list), serializeList(list));
     const missing = used.filter((id) => !editor.lists.has(id));
-    message = loaded.length
-      ? `Downloaded ${loaded.map(listFileName).join(", ")}.${missing.length ? ` Not loaded, so not exported: ${missing.join(", ")}.` : ""}`
-      : "This domain uses no loaded lists.";
+    message = loaded.length ? await saveListsSomewhere(loaded, helpers) : "This domain uses no loaded lists.";
+    if (missing.length) message += ` Not loaded, so not saved: ${missing.join(", ")}.`;
     render();
+  };
+
+  const exportOne = async (list: TileList) => {
+    // An explicit export of a built-in list still downloads it, e.g. to look at it or to send it to someone.
+    if (list.builtIn && !(helpers.folder.folder && helpers.folder.ready)) {
+      helpers.download(listFileName(list), serializeList(list));
+      message = `Downloaded ${listFileName(list)}.`;
+    } else {
+      message = await saveListsSomewhere([list], helpers);
+    }
+    render();
+  };
+
+  const loadFromFolder = async () => {
+    const folder = helpers.folder.folder;
+    if (!folder) return;
+    try {
+      const report = await importListFiles(editor, await readListFiles(folder));
+      const news = report.filter((line) => !line.includes("already loaded"));
+      message = `Read ${report.length} list file(s) from "${folder.name}". ${news.length ? news.join(" ") : "Nothing new."}`;
+    } catch (error) {
+      message = `Could not read the lists folder: ${(error as Error).message}`;
+    }
+    render();
+  };
+
+  const renderFolder = () => {
+    const link = helpers.folder;
+    const button = (label: string, onclick: () => unknown, title = "") => h("button", { type: "button", class: "secondary", title, onclick }, label);
+    if (!folderSupported()) {
+      return h(
+        "p",
+        { class: "small muted folder-bar" },
+        `Lists are saved as downloads. Put them in ${GAME_LISTS_PATH} of the game checkout next to this editor. (In Chrome or Edge the editor can save into that folder directly.)`
+      );
+    }
+    if (!link.folder) {
+      return h(
+        "div",
+        { class: "folder-bar" },
+        h("span", { class: "small" }, "📁 No lists folder. Connect ", h("code", {}, GAME_LISTS_PATH), " of your game checkout to save lists straight into it:"),
+        button("Connect lists folder…", async () => {
+          if (await link.connect()) message = link.ready ? `Connected "${link.folder?.name}".` : "The folder was chosen, but the browser did not allow writing to it.";
+          render();
+        })
+      );
+    }
+    return h(
+      "div",
+      { class: "folder-bar" },
+      h("span", { class: "small" }, `📁 Lists folder: `, h("strong", {}, link.folder.name), link.ready ? " ✓" : " (needs permission)"),
+      link.ready ? button("Load lists from folder", loadFromFolder, "Import every .list.json in the folder") : button("Reconnect", () => link.reconnect(), "The browser asks again after a reload"),
+      button("Change…", async () => {
+        await link.connect();
+        render();
+      }),
+      button("Disconnect", () => link.disconnect())
+    );
   };
 
   const select = (id: string) => {
@@ -371,7 +458,11 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
             ),
         locked ? null : h("button", { type: "button", class: "secondary", onclick: () => duplicate(list) }, "Duplicate"),
         h("span", { class: "spacer" }),
-        h("button", { type: "button", class: "primary", onclick: () => helpers.download(listFileName(list), serializeList(list)) }, "Export .list.json")
+        h(
+          "button",
+          { type: "button", class: "primary", onclick: () => exportOne(list) },
+          helpers.folder.ready && !list.builtIn ? "Save to lists folder" : "Export .list.json"
+        )
       )
     );
   };
@@ -389,10 +480,11 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
         h("button", { type: "button", class: "secondary", onclick: importLists }, "Import…"),
         h(
           "button",
-          { type: "button", class: "secondary", disabled: usedCount === 0, title: "Download every list this domain uses, to add them to a pull request", onclick: exportUsed },
-          `Export lists used by this domain (${usedCount})`
+          { type: "button", class: "secondary", disabled: usedCount === 0, title: "Every list of yours this domain uses, to add to the pull request next to it", onclick: exportUsed },
+          `${helpers.folder.ready ? "Save" : "Export"} lists used by this domain (${usedCount})`
         )
       ),
+      renderFolder(),
       message ? h("p", { class: "small notice" }, message) : null,
       h("div", { class: "lists-layout" }, renderSidebar(), list ? renderEditor(list) : h("p", { class: "muted small" }, "Select or create a list."))
     );
@@ -417,4 +509,5 @@ export function buildListsDialog(editor: Editor, host: HTMLElement, helpers: Lis
     if (!isOpen()) return unsubscribe();
     if (topics.has("lists") || topics.has("cells") || topics.has("document")) render();
   });
+  const unsubscribeFolder = helpers.folder.subscribe(() => (isOpen() ? render() : unsubscribeFolder()));
 }

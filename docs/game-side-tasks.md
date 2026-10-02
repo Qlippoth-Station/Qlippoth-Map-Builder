@@ -22,7 +22,7 @@ This page says *in which order* to do the work, what each step is done with, and
 | 5 | Add the integration test for all domain files | `Content.IntegrationTests/Tests/Qlippoth/` | Test passes, fails on a broken file |
 | 6 | Point a Qlippoth at the domain | `Resources/Prototypes/Entities/Qlippoths/` | Prototype loads |
 | 7 | Test in game | – | Checklist in step 7 holds |
-| 8 | Optional: run the editor's check in the game CI | `.github/workflows/` | CI job green |
+| 8 | Run the editor's checks and the list guard in the game CI | `.github/workflows/domains.yml` | Check required and green |
 | 9 | Open the PR, then close the loop in the editor repository | both | 4a marked done |
 
 ## Step 0: set up the workspace
@@ -150,31 +150,49 @@ The step is done when all of these hold:
 - [ ] Renaming the file's `path` to a missing file gives the plain arena and a `Could not load rift domain` error in
       the server log, not an exception.
 
-## Step 8 (optional): run the editor's check in the game CI
+## Step 8: run the editor's checks in the game CI
 
-The game's integration test already blocks broken files. A faster job can run the editor's check on every PR that
-touches `Resources/Domains/`, with the same side-by-side layout as on a developer machine:
+The game's integration test blocks broken files after a full build. The editor repository has a **reusable workflow**
+that checks domain and list files in a minute and guards shared lists. Add this file to the game repository:
 
 ```yaml
+# .github/workflows/domains.yml
+name: Domains
 on:
   pull_request:
     paths: ["Resources/Domains/**"]
-
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 jobs:
   domains:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { path: Qlippoth-station-14 }
-      - uses: actions/checkout@v4
-        with: { repository: Qlippoth-Station/Qlippoth-Map-Builder, path: Qlippoth-Map-Builder }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npm ci && npm run palette && npm run domains
-        working-directory: Qlippoth-Map-Builder
+    uses: Qlippoth-Station/Qlippoth-Map-Builder/.github/workflows/check-game-domains.yml@main
 ```
 
-It catches file-name and schema problems in seconds instead of after a full game build.
+It checks out the game and the editor side by side, builds the palette and runs:
+
+- `npm run domains`: schema, bounds, markers, ids, lists in the right folder, unique list ids, built-in lists equal to
+  the editor's,
+- the **list guard** (`scripts/check-list-changes.mjs`) against the PR's base branch:
+
+  | Change in the PR | Result |
+  |---|---|
+  | New list | passes |
+  | Only `name` or `icon` of a list changed | passes (the game ignores them) |
+  | Entries, chances or order of an existing list changed | **fails** until a maintainer adds the `list-change-approved` label, because every domain using the list changes |
+  | A list removed that a domain still uses | **always fails** |
+
+  The run summary shows a table of every list change and which domains use the list.
+
+Setup in the game repository, once:
+
+1. Create the label `list-change-approved`.
+2. Make the *Domains* check required for `main` (branch protection), so the guard cannot be skipped.
+3. Optional: a `CODEOWNERS` line such as `/Resources/Domains/Lists/ @Qlippoth-Station/maintainers` so list changes
+   always get a maintainer review.
+4. If the editor repository is private, allow its workflows to be used by the game repository
+   (editor repository → Settings → Actions → General → Access).
+
+Two PRs that add the **same new list id** need no extra check: lists must sit directly in `Resources/Domains/Lists/`,
+so the same id is the same path and the second PR gets a merge conflict.
 
 ## Step 9: open the PR, then close the loop in the editor
 

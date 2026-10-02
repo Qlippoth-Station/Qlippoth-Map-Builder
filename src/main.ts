@@ -7,7 +7,8 @@ import { brushName, buildPalettePanel, buildSidebar, buildTopBar, newSeed } from
 import { parseList, serializeList, uniqueListId, type TileList } from "./lists";
 import { loadBuiltInLists } from "./builtinLists";
 import { loadArt } from "./assets";
-import { buildListsDialog, importListFiles } from "./listsDialog";
+import { buildListsDialog, importListFiles, saveListsSomewhere, type ListsDialogHelpers } from "./listsDialog";
+import { ListFolderLink } from "./listFolder";
 import { MapView, isTyping } from "./view";
 
 const AUTOSAVE_KEY = "qlippoth-domain-builder.autosave";
@@ -102,10 +103,20 @@ function start(palette: Palette): void {
   const hoverText = h("span", { class: "hover" }, "");
   const stateText = h("span", { class: "state" });
   const selectionText = h("span", { class: "selection-info" });
+  const noticeText = h("span", { class: "status-notice", role: "status" });
+  let noticeTimer = 0;
+  /** A short message in the status bar that goes away by itself. */
+  const notify = (text: string) => {
+    noticeText.textContent = text;
+    noticeText.title = text;
+    window.clearTimeout(noticeTimer);
+    noticeTimer = window.setTimeout(() => (noticeText.textContent = ""), 12000);
+  };
   clear(
     status,
     hoverText,
     h("span", { class: "spacer" }),
+    noticeText,
     selectionText,
     stateText,
     h("span", { class: "commit", title: "Game commit the palette was built from" }, palette.gameCommit ? `palette @ ${palette.gameCommit.slice(0, 8)}` : "palette")
@@ -143,6 +154,10 @@ function start(palette: Palette): void {
     });
   }
 
+  const listFolder = new ListFolderLink();
+  const listHelpers: ListsDialogHelpers = { download, pickFiles, folder: listFolder };
+  void listFolder.restore();
+
   const actions = {
     newDocument() {
       showNewDialog();
@@ -167,9 +182,14 @@ function start(palette: Palette): void {
       }
       if (report.length && (domains.length === 0 || report.some((line) => !line.endsWith("already loaded.")))) window.alert(report.join("\n"));
     },
-    save() {
+    async save() {
       download(fileName(editor.doc.name), serialize(editor.doc));
       editor.markSaved();
+      // A domain is only complete with its lists: save them too, or say where they have to go.
+      const lists = [...editor.usedLists()].map((id) => editor.lists.get(id)).filter((list): list is TileList => !!list && !list.builtIn);
+      if (lists.length === 0) return;
+      if (listFolder.ready) notify(`Domain saved. ${await saveListsSomewhere(lists, listHelpers)}`);
+      else notify(`Domain saved. It uses ${lists.length} list(s) of yours: add them to the pull request too (Lists → Export lists used by this domain).`);
     },
     manageLists() {
       showListsDialog();
@@ -231,7 +251,7 @@ function start(palette: Palette): void {
   function showListsDialog() {
     const body = h("div", { class: "lists-dialog" });
     openDialog("Random lists", body);
-    buildListsDialog(editor, body, { download, pickFiles }, () => dialog.open);
+    buildListsDialog(editor, body, listHelpers, () => dialog.open);
   }
 
   function showHelpDialog() {

@@ -925,3 +925,21 @@ button.danger:hover {
   align-items: center;
   gap: 6px;
 }
+
+.folder-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.status-notice {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
