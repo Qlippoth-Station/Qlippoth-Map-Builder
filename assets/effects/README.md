@@ -14,3 +14,8 @@ the editor falls back to its built-in drawing, so every file here is optional.
   well; a solid fill does not.
 - Every group also gets an outline around its cells in its own color, so the effect does not need to show where a
   group ends.
+
+## License
+
+Effects are licensed under **CC-BY-SA 3.0** ([../LICENSE.md](../LICENSE.md)). Add every file to
+[`../credits.json`](../credits.json) with its author; `npm test` checks this.

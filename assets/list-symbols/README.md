@@ -13,7 +13,11 @@ name without the extension is the symbol id that list files store (`"icon": { "s
    rename a symbol once lists use it (those lists fall back to their letter).
 4. Supported: `.png`, `.svg`, `.webp`. No code change is needed; the editor picks the files up when it is built.
 
-`bricks.svg`, `crate.svg` and `floor-tiles.svg` are placeholders. Replace or delete them when the real set is ready.
+`bricks.svg`, `crate.svg` and `floor-tiles.svg` are placeholders. Replace or delete them when the real set is ready,
+and update their entries in `../credits.json`.
 
-Symbols are the editor's own art, so they are covered by this repository's license unless a file says otherwise.
-Do not copy game sprites here; those keep their own licenses and are already shown through the palette.
+## License
+
+Symbols are licensed under **CC-BY-SA 3.0** ([../LICENSE.md](../LICENSE.md)). Add every new file to
+[`../credits.json`](../credits.json) with its author; `npm test` checks this. Do not copy game sprites here: they are
+already shown through the palette and keep their own credits there.

@@ -1,6 +1,21 @@
 // Editor art that lives in this repository (assets/): list symbols and map effects. Files are picked up by name at
 // build time, so adding art needs no code change. See assets/list-symbols/README.md and assets/effects/README.md.
 
+import creditsText from "../assets/credits.json?raw";
+
+export interface ArtCredit {
+  /** Path from the repository root, e.g. assets/list-symbols/bricks.svg. */
+  source: string;
+  license: string;
+  copyright: string;
+}
+
+/** Author and license of every file in assets/ (CC-BY-SA 3.0, see assets/LICENSE.md). Shown in the Credits dialog. */
+export const ART_CREDITS: ArtCredit[] = JSON.parse(creditsText);
+
+/** The only license accepted for files in assets/. */
+export const ART_LICENSE = "CC-BY-SA-3.0";
+
 const symbolFiles = import.meta.glob("../assets/list-symbols/*.{png,svg,webp}", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 const effectFiles = import.meta.glob("../assets/effects/*.{png,svg,webp}", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 

@@ -112,5 +112,9 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 
 Code in this repository is MIT licensed (see [LICENSE](LICENSE)).
 
+The editor's own art in [`assets/`](assets/) (list symbols, map effects) is licensed under
+[CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), like most Space Station 14 sprites; authors are
+listed in [`assets/credits.json`](assets/credits.json). See [assets/LICENSE.md](assets/LICENSE.md).
+
 Sprites shown in the editor come from the game repository and keep their original licenses, mostly CC-BY-SA 3.0.
 The editor's **Credits** dialog lists the source, license and copyright of every sprite used.

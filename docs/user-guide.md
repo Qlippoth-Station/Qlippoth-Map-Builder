@@ -251,5 +251,6 @@ together with the `.list.json` files of any random lists it uses (**Lists → Ex
 
 ## Credits
 
-The **Credits** button lists the source, license and copyright of every sprite in the palette. Sprites come from the
+The **Credits** button lists the editor's own art (list symbols, map effects; CC-BY-SA 3.0) with its authors, and the
+source, license and copyright of every sprite in the palette. Sprites come from the
 game repository and keep their original licenses, mostly CC-BY-SA 3.0.

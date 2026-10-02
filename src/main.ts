@@ -6,7 +6,7 @@ import { loadPalette, type Palette } from "./palette";
 import { brushName, buildPalettePanel, buildSidebar, buildTopBar, newSeed } from "./ui";
 import { parseList, serializeList, uniqueListId, type TileList } from "./lists";
 import { loadBuiltInLists } from "./builtinLists";
-import { loadArt } from "./assets";
+import { ART_CREDITS, loadArt } from "./assets";
 import { buildListsDialog, importListFiles, saveListsSomewhere, type ListsDialogHelpers } from "./listsDialog";
 import { ListFolderLink } from "./listFolder";
 import { MapView, isTyping } from "./view";
@@ -282,7 +282,26 @@ function start(palette: Palette): void {
 
   async function showCreditsDialog() {
     const body = h("div", { class: "credits" }, h("p", {}, "Loading…"));
-    openDialog("Credits", body);
+    // The editor's own art (assets/) is listed first; it ships with the editor, so it never fails to load.
+    const art = h(
+      "section",
+      { class: "art-credits" },
+      h("h3", {}, "Editor art"),
+      h(
+        "p",
+        {},
+        "List symbols and map effects are the editor's own art, licensed under ",
+        h("a", { href: "https://creativecommons.org/licenses/by-sa/3.0/", target: "_blank", rel: "noopener" }, "CC-BY-SA 3.0"),
+        "."
+      ),
+      h(
+        "ul",
+        { class: "credit-list" },
+        ...ART_CREDITS.map((credit) => h("li", {}, h("code", {}, credit.source), h("span", {}, ` · ${credit.license}`), h("p", {}, credit.copyright)))
+      ),
+      h("h3", {}, "Game sprites")
+    );
+    openDialog("Credits", art, body);
     try {
       const credits: { source: string; license?: string; copyright?: string }[] = await (await fetch("palette/credits.json")).json();
       const licenses = new Map<string, number>();
