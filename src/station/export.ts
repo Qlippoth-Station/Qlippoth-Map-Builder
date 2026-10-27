@@ -6,7 +6,7 @@
 // inside them; new entities are written with just a Transform. When tiles change, the grid's chunks and its
 // atmosphere are rewritten: existing tiles keep their gas mixture, new tiles get standard air.
 
-import { itemsOf, normalizeAngle, parseKey, type MapDocument } from "../document";
+import { itemsOf, normalizeAngle, parseKey, type MapDocument, type SpawnerData } from "../document";
 import { findItem, type Palette } from "../palette";
 import { parseMapFile, toBase64, type EntityRecord, type GridRecord, type MapFile } from "./mapfile";
 import type { StationSource } from "./source";
@@ -32,14 +32,17 @@ interface WantedTile {
   rotation: number;
 }
 
-/** The source of a station that was not imported: an empty map from the template, centred on the grid origin. */
-export function newSource(doc: MapDocument): StationSource {
-  const file = parseMapFile(newStationText(doc.name));
+/**
+ * The source of a station that was not imported: an empty map from a template (the new-station template unless
+ * another is given), centred on the grid origin.
+ */
+export function newSource(doc: MapDocument, template?: string): StationSource {
+  const file = parseMapFile(template ?? newStationText(doc.name));
   return { file, gridUid: file.grids[0].uid, originX: -Math.floor(doc.width / 2), originY: -Math.floor(doc.height / 2) };
 }
 
-export function exportStation(doc: MapDocument, palette: Palette): ExportResult {
-  const source = doc.station ?? newSource(doc);
+export function exportStation(doc: MapDocument, palette: Palette, template?: string): ExportResult {
+  const source = doc.station ?? newSource(doc, template);
   const { file, gridUid, originX, originY } = source;
   const grid = file.grids.find((candidate) => candidate.uid === gridUid);
   if (!grid) throw new Error("The station's grid is missing from its source map.");
@@ -59,7 +62,7 @@ export function exportStation(doc: MapDocument, palette: Palette): ExportResult 
 
   // ---- Entities ----
   const placed = new Map<number, { x: number; y: number; rot: number }>();
-  const added: { proto: string; x: number; y: number; rot: number }[] = [];
+  const added: { proto: string; x: number; y: number; rot: number; spawner?: SpawnerData }[] = [];
   for (const layer of ["structure", "object"] as const) {
     for (const [key, brush] of doc.layers[layer]) {
       const [x, y] = parseKey(key);
@@ -67,7 +70,7 @@ export function exportStation(doc: MapDocument, palette: Palette): ExportResult 
         const cell = { x: x + originX, y: y + originY, rot: normalizeAngle(item.rot ?? 0) };
         const record = item.uid !== undefined ? file.byUid.get(item.uid) : undefined;
         if (record && record.parent === gridUid && !placed.has(item.uid!)) placed.set(item.uid!, cell);
-        else added.push({ proto: item.id, ...cell });
+        else added.push({ proto: item.id, ...cell, spawner: item.spawner });
       }
     }
   }
@@ -195,10 +198,22 @@ function sameTiles(file: MapFile, grid: GridRecord, wanted: Map<string, WantedTi
   return true;
 }
 
-function newEntity(uid: number, entity: { x: number; y: number; rot: number }, gridUid: number): string[] {
+function newEntity(uid: number, entity: { x: number; y: number; rot: number; spawner?: SpawnerData }, gridUid: number): string[] {
   const block = ["  - uid: " + uid, "    components:", "    - type: Transform"];
   if (entity.rot) block.push(`      rot: ${formatNumber(entity.rot)} rad`);
   block.push(`      pos: ${formatNumber(entity.x + 0.5)},${formatNumber(entity.y + 0.5)}`, `      parent: ${gridUid}`);
+  const spawner = entity.spawner;
+  if (spawner) {
+    // Every field is written, so nothing of the carrier prototype's own spawn list is left.
+    const list = (key: string, ids: string[]) => (ids.length ? [`      ${key}:`, ...ids.map((id) => `      - ${id}`)] : [`      ${key}: []`]);
+    block.push(
+      "    - type: RandomSpawner",
+      ...list("prototypes", spawner.prototypes),
+      `      chance: ${formatNumber(spawner.chance)}`,
+      ...list("rarePrototypes", spawner.rarePrototypes),
+      `      rareChance: ${formatNumber(spawner.rareChance)}`
+    );
+  }
   return block;
 }
 

@@ -65,6 +65,15 @@ export function importStation(text: string, palette: Palette, name: string, layo
     const key = cellKey(Math.floor(entity.pos![0]) - originX, Math.floor(entity.pos![1]) - originY);
     const item: Item = { kind: "fixed", id: entity.proto, uid: entity.uid };
     if (entity.rot) item.rot = entity.rot;
+    if (entity.spawner?.prototypes?.length) {
+      item.spawner = {
+        name: "Random",
+        prototypes: entity.spawner.prototypes,
+        chance: entity.spawner.chance ?? 1,
+        rarePrototypes: entity.spawner.rarePrototypes ?? [],
+        rareChance: entity.spawner.rareChance ?? 0.05,
+      };
+    }
     const layer = entityLayer(palette, entity.proto) as "structure" | "object";
     const stack = stacks[layer].get(key);
     if (stack) stack.push(item);

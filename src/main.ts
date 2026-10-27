@@ -11,6 +11,7 @@ import { exportPackage } from "./station/gamemap";
 import { importStation } from "./station/import";
 import { loadAutosaves, saveAutosave, saveLastMode, type Autosaves } from "./storage";
 import { ModuleLibrary, type ModuleRecord } from "./modules";
+import { RandomSetLibrary } from "./randomsets";
 import { exportProject, openProject, slug } from "./project";
 import { buildRightSidebar, buildSidebar, buildTopBar } from "./ui";
 import { MapView, isTyping } from "./view";
@@ -49,6 +50,10 @@ function start(palette: Palette, autosaves: Autosaves): void {
   void gameFolder.restore();
   const library = new ModuleLibrary();
   void library.load();
+  const randomSets = new RandomSetLibrary();
+  void randomSets.load();
+  editor.randomSets = randomSets;
+  randomSets.subscribe(() => editor.emit("selection"));
   const stage = h("section", { class: "stage" });
   const status = h("footer", { class: "statusbar" });
   const dialog = h("dialog", { class: "dialog" });
@@ -64,7 +69,9 @@ function start(palette: Palette, autosaves: Autosaves): void {
     h("span", { class: "commit", title: "Game commit the palette was built from" }, palette.gameCommit ? `palette @ ${palette.gameCommit.slice(0, 8)}` : "palette")
   );
 
+  let hovered: [number, number] | null = null;
   view.onHover = (cell) => {
+    hovered = cell;
     if (!cell) {
       hoverText.textContent = "";
       return;
@@ -73,7 +80,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
     const contents = editor.layers.map((layer) => {
       const items = itemsOf(editor.get(layer, x, y));
       if (items.length === 0) return null;
-      return `${LAYER_NAMES[layer]}: ${items.map((item) => findItem(palette, layer, item.id)?.name ?? item.id).join(", ")}`;
+      const names = items.map((item) => (item.spawner ? `random ${item.spawner.name}` : findItem(palette, layer, item.id)?.name ?? item.id));
+      return `${LAYER_NAMES[layer]}: ${names.join(", ")}`;
     }).filter(Boolean);
     // Imported stations also show the game's grid coordinates of the tile.
     const station = editor.doc.station;
@@ -156,6 +164,17 @@ function start(palette: Palette, autosaves: Autosaves): void {
       const place = (center: number, size: number, room: number) => Math.max(0, Math.min(room - size, center - Math.floor(size / 2)));
       const info = module && { id: module.id, name: module.name, version: module.updated, width: doc.width, height: doc.height };
       editor.addDocument(doc, place(cx, doc.width, editor.doc.width), place(cy, doc.height, editor.doc.height), info);
+    },
+
+    // ---- Random sets and rooms ----
+    newSet() {
+      const layer = editor.activeLayer;
+      const name = window.prompt(`Name of the new ${LAYER_NAMES[layer]} set:`, `Random ${LAYER_NAMES[layer].toLowerCase()} ${randomSets.forMode(editor.mode).length + 1}`)?.trim();
+      if (name) randomSets.create(name, editor.mode, layer);
+    },
+    addRoomSlot() {
+      const name = window.prompt("Name of the room slot (e.g. Theater):", `Room ${editor.roomSlots.length + 1}`)?.trim();
+      if (name) editor.addRoomSlot(name);
     },
 
     // ---- Modules and projects ----
@@ -253,7 +272,11 @@ function start(palette: Palette, autosaves: Autosaves): void {
       if (problems.length && !window.confirm(`The checks list ${problems.length} problem(s). Export the package anyway?`)) return;
       const base = fileName(editor.doc.name, "station").replace(/\.yml$/, "");
       try {
-        download(exportPackage(editor.doc, palette, base), `${base}.zip`);
+        const moduleDocument = (id: string) => {
+          const module = library.get(id);
+          return module ? readModule(module) : null;
+        };
+        download(exportPackage(editor.doc, palette, base, moduleDocument), `${base}.zip`);
       } catch (error) {
         window.alert(`Could not export: ${(error as Error).message}`);
       }
@@ -518,6 +541,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
   };
 
   editor.subscribe((topics) => {
+    // The cell under the mouse can change without the mouse moving (painting, undo).
+    if (topics.has("cells") && hovered) view.onHover(hovered);
     if (topics.has("history") || topics.has("cells") || topics.has("document")) {
       stateText.textContent = editor.dirty ? "Unsaved changes (autosaved in this browser)" : "No unsaved changes";
       scheduleAutosave();
@@ -612,7 +637,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
   clear(
     app,
     buildTopBar(editor, actions),
-    h("main", { class: "workspace" }, buildSidebar(editor, view, actions), stage, buildRightSidebar(editor, library, view, actions)),
+    h("main", { class: "workspace" }, buildSidebar(editor, view, actions), stage, buildRightSidebar(editor, library, randomSets, view, actions)),
     status,
     dialog
   );

@@ -99,3 +99,54 @@ export function newStationText(name: string): string {
     "",
   ].join("\n");
 }
+
+/**
+ * A dungeon room atlas: one entity that is both the map and its grid (the game's DungeonSystem reads the grid from
+ * the map entity), like Resources/Maps/Dungeon/*.yml. Rooms are laid out on it side by side.
+ */
+export function newAtlasText(): string {
+  return [
+    "meta:",
+    "  format: 7",
+    "  category: Map",
+    "  engineVersion: 272.0.0",
+    '  forkId: ""',
+    '  forkVersion: ""',
+    "  time: 01/01/2026 00:00:00",
+    "  entityCount: 1",
+    "maps:",
+    "- 1",
+    "grids:",
+    "- 1",
+    "orphans: []",
+    "nullspace: []",
+    "tilemap:",
+    "  0: Space",
+    "entities:",
+    '- proto: ""',
+    "  entities:",
+    "  - uid: 1",
+    "    components:",
+    "    - type: MetaData",
+    "    - type: Transform",
+    "    - type: Map",
+    "      mapPaused: True",
+    "    - type: GridTree",
+    "    - type: Broadphase",
+    "    - type: OccluderTree",
+    "    - type: MapGrid",
+    "      chunks: {}",
+    "    - type: Gravity",
+    "      gravityShakeSound: !type:SoundPathSpecifier",
+    "        path: /Audio/Effects/alert.ogg",
+    "    - type: DecalGrid",
+    "      chunkCollection:",
+    "        version: 2",
+    "        nodes: []",
+    "    - type: SpreaderGrid",
+    "    - type: GridPathfinding",
+    "    - type: RadiationGridResistance",
+    "...",
+    "",
+  ].join("\n");
+}

@@ -28,6 +28,8 @@ export interface EntityRecord {
   rot: number;
   parent: number | null;
   transform: TransformLines;
+  /** RandomSpawner fields written on this entity in the map (only those the map overrides). */
+  spawner?: { prototypes?: string[]; chance?: number; rarePrototypes?: string[]; rareChance?: number };
 }
 
 export interface Tile {
@@ -150,6 +152,7 @@ export function parseMapFile(text: string): MapFile {
   let atmos: GridAtmosphere | null = null;
   let chunk: { ind: [number, number]; tiles: string; version: number; size: number } | null = null;
   let atmosChunk: [number, number] | null = null;
+  let spawnerList: string[] | null = null;
   // Atmosphere masks are decoded once the component is read, because chunkSize comes after the tiles.
   let atmosMasks: [number, number, number, number][] = [];
   let inUniqueMixes = false;
@@ -232,7 +235,10 @@ export function parseMapFile(text: string): MapFile {
       componentStart = i;
       if (component === "Transform") entity.transform.at = i;
       else if (component === "MapGrid") grid = { uid: entity.uid, chunkSize: 16, chunkVersion: 6, tiles: new Map(), mapGrid: [i, i], atmosphere: null };
-      else if (component === "GridAtmosphere") {
+      else if (component === "RandomSpawner") {
+        entity.spawner = {};
+        spawnerList = null;
+      } else if (component === "GridAtmosphere") {
         atmos = { start: i, end: i, chunkSize: 4, mixes: new Map(), uniqueMixes: [] };
         grid ??= { uid: entity.uid, chunkSize: 16, chunkVersion: 6, tiles: new Map(), mapGrid: [i, i], atmosphere: null };
         grid.atmosphere = atmos;
@@ -241,7 +247,21 @@ export function parseMapFile(text: string): MapFile {
       continue;
     }
 
-    if (component === "Transform") {
+    if (component === "RandomSpawner" && entity.spawner) {
+      const field = /^ {6}(\w+):(?: (.*))?$/.exec(line);
+      if (field) {
+        const [, key, value] = field;
+        spawnerList = null;
+        if (key === "chance" || key === "rareChance") entity.spawner[key] = Number(value);
+        else if (key === "prototypes" || key === "rarePrototypes") {
+          const list = value === "[]" ? [] : value?.startsWith("[") ? value.slice(1, -1).split(",").map((id) => id.trim()).filter(Boolean) : [];
+          entity.spawner[key] = list;
+          if (value === undefined) spawnerList = list;
+        }
+      } else if (spawnerList && line.startsWith("      - ")) {
+        spawnerList.push(line.slice(8).trim());
+      }
+    } else if (component === "Transform") {
       if (line.startsWith("      pos: ")) {
         entity.transform.pos = i;
         const [x, y] = line.slice(11).split(",").map(Number);

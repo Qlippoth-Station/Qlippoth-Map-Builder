@@ -260,6 +260,24 @@ export class MapView {
 
   private drawItem(ctx: CanvasRenderingContext2D, layer: LayerId, brush: Item, sx: number, sy: number, size: number): void {
     const palette = this.editor.palette;
+    if (brush.spawner) {
+      // A random spawner shows what it spawns first, with a die badge.
+      const first = brush.spawner.prototypes[0];
+      this.drawItem(ctx, layer, { kind: "fixed", id: first && findItem(palette, layer, first) ? first : brush.id, rot: brush.rot }, sx, sy, size);
+      if (size >= 12) {
+        const radius = Math.max(4, size * 0.16);
+        ctx.fillStyle = "#a871e0";
+        ctx.beginPath();
+        ctx.arc(sx + size - radius - 1, sy + radius + 1, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.font = `700 ${Math.round(radius * 1.5)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("?", sx + size - radius - 1, sy + radius + 2);
+      }
+      return;
+    }
     const item = findItem(palette, layer, brush.id);
 
     if (item?.icon != null) {
@@ -326,6 +344,23 @@ export class MapView {
     const { ctx, editor } = this;
     const cell = this.cellSize;
     const danger = getComputedStyle(document.documentElement).getPropertyValue("--danger").trim() || "#e05555";
+
+    // Random room slots (stations): dashed frame with the slot's name.
+    for (const slot of editor.mode === "station" ? editor.roomSlots : []) {
+      const [sx, sy] = this.cellToScreen(slot.x, slot.y + slot.height - 1);
+      ctx.strokeStyle = "#a871e0";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 5]);
+      ctx.strokeRect(sx + 1, sy + 1, slot.width * cell - 2, slot.height * cell - 2);
+      ctx.setLineDash([]);
+      if (cell * slot.width >= 40) {
+        ctx.fillStyle = "#a871e0";
+        ctx.font = "600 12px system-ui, sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText(`${slot.name} · ${slot.modules.length} room(s)`, sx + 4, sy + 4, slot.width * cell - 8);
+      }
+    }
 
     if (editor.floating) {
       const { mask, x, y } = editor.floating;

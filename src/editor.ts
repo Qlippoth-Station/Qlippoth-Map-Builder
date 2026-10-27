@@ -20,8 +20,10 @@ import {
   type LayerId,
   type MapDocument,
   type ModuleInstance,
+  type RoomSlot,
   type StationProfile,
 } from "./document";
+import { pickEntry, SET_PREFIX, spawnerData, type RandomSetLibrary } from "./randomsets";
 import { MODE_INFO, type ModeId } from "./modes";
 import { findItem, type Palette } from "./palette";
 import { exportableChecks, moduleEdgeChecks } from "./station/checks";
@@ -56,7 +58,8 @@ type Change =
   | { type: "size"; before: [number, number]; after: [number, number] }
   | { type: "name"; before: string; after: string }
   | { type: "entry"; before: EntrySettings; after: EntrySettings }
-  | { type: "instances"; before: ModuleInstance[]; after: ModuleInstance[] };
+  | { type: "instances"; before: ModuleInstance[]; after: ModuleInstance[] }
+  | { type: "slots"; before: RoomSlot[]; after: RoomSlot[] };
 
 export interface Warning {
   message: string;
@@ -154,6 +157,8 @@ export class Editor {
   inspected: [number, number] | null = null;
   /** Rotation of what the brush places on stacking layers, in radians (game convention: counter-clockwise). */
   brushRot = 0;
+  /** Random sets the brush can draw from (selected as "set:<id>"). */
+  randomSets: RandomSetLibrary | null = null;
   /** Increases on every edit; compared against the last saved value to know about unsaved work. */
   revision = 0;
   savedRevision = 0;
@@ -279,9 +284,30 @@ export class Editor {
   selectedBrush(): Item | null {
     const id = this.selected[this.activeLayer];
     if (!id) return null;
-    const item: Item = { kind: "fixed", id };
+    let item: Item = { kind: "fixed", id };
+    if (id.startsWith(SET_PREFIX)) {
+      const set = this.randomSets?.get(id.slice(SET_PREFIX.length));
+      if (!set?.entries.length) return null;
+      // Game sets become one random spawner entity; other sets are picked from per cell while painting.
+      const carrier = this.palette.spawnerCarrier;
+      item =
+        set.resolve === "game" && this.stacks(this.activeLayer) && carrier
+          ? { kind: "fixed", id: carrier, spawner: spawnerData(set) }
+          : { kind: "fixed", id: set.entries[0].id, set: set.id };
+    }
     if (this.brushRot && this.stacks(this.activeLayer)) item.rot = this.brushRot;
     return item;
+  }
+
+  /** A brush with its random set entries picked (one pick per call, i.e. per cell). */
+  private resolveSets(brush: Brush): Brush {
+    if (!itemsOf(brush).some((item) => item.set)) return brush;
+    const items = itemsOf(brush).map(({ set: setId, ...item }): Item => {
+      const set = setId ? this.randomSets?.get(setId) : undefined;
+      const id = set ? pickEntry(set) : null;
+      return id ? { ...item, id } : item;
+    });
+    return fromItems(items)!;
   }
 
   /** Turns what the brush places by a quarter: 1 = clockwise, -1 = counter-clockwise. */
@@ -377,6 +403,7 @@ export class Editor {
    */
   paint(layer: LayerId, x: number, y: number, brush: Brush | null): void {
     if (!this.editable(x, y)) return;
+    if (brush) brush = this.resolveSets(brush);
     if (brush && this.stacks(layer)) {
       const items = itemsOf(this.get(layer, x, y));
       const added = itemsOf(brush).filter((item) => !items.some((existing) => existing.id === item.id));
@@ -534,6 +561,10 @@ export class Editor {
       case "instances":
         this.doc.instances = change.after;
         this.emit("document");
+        break;
+      case "slots":
+        this.doc.roomSlots = change.after;
+        this.emit("document", "view");
         break;
     }
   }
@@ -815,6 +846,44 @@ export class Editor {
     this.endStroke();
   }
 
+  // ---- Random room slots (stations) ------------------------------------------------------------
+
+  get roomSlots(): RoomSlot[] {
+    return this.doc.roomSlots ?? [];
+  }
+
+  private setSlots(after: RoomSlot[]): void {
+    this.beginStroke();
+    this.record({ type: "slots", before: this.roomSlots, after });
+    this.endStroke();
+  }
+
+  /** A room slot over the selection's bounding box. */
+  addRoomSlot(name: string): RoomSlot | null {
+    if (!this.selection) return null;
+    const points = [...this.selection].map(parseKey);
+    const [x, y] = [Math.min(...points.map(([px]) => px)), Math.min(...points.map(([, py]) => py))];
+    const slot: RoomSlot = {
+      name,
+      x,
+      y,
+      width: Math.max(...points.map(([px]) => px)) - x + 1,
+      height: Math.max(...points.map(([, py]) => py)) - y + 1,
+      modules: [],
+    };
+    this.setSlots([...this.roomSlots, slot]);
+    return slot;
+  }
+
+  setSlotModules(index: number, modules: string[]): void {
+    if (!this.roomSlots[index]) return;
+    this.setSlots(this.roomSlots.map((slot, i) => (i === index ? { ...slot, modules } : slot)));
+  }
+
+  removeRoomSlot(index: number): void {
+    this.setSlots(this.roomSlots.filter((_, i) => i !== index));
+  }
+
   // ---- Entries (domain) ------------------------------------------------------------------------
 
   /** Entry markers in order. */
@@ -910,6 +979,7 @@ function invert(change: Change): Change {
     case "name":
     case "entry":
     case "instances":
+    case "slots":
       return { ...change, before: change.after, after: change.before } as Change;
   }
 }

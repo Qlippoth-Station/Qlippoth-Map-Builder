@@ -207,9 +207,16 @@ function collectEntities(resources) {
   };
 
   const entities = [];
+  // The simplest concrete RandomSpawner entity carries the editor's random sets in exported maps.
+  let spawnerCarrier = null;
   for (const [id, { proto, relative }] of byId) {
     if (proto.abstract) continue;
     const resolved = resolve(id);
+    if ("RandomSpawner" in resolved.components) {
+      // Every RandomSpawner field is written per placement; prefer a plain random marker for readable maps.
+      const score = [relative.includes("Spawners/Random") ? 0 : 1, Object.keys(resolved.components).length, id.length];
+      if (!spawnerCarrier || compareScores(score, spawnerCarrier.score) < 0) spawnerCarrier = { id, score };
+    }
     const components = resolved.components;
     const tags = new Set(components.Tag?.tags ?? []);
     const categories = [...resolved.categories, ...Object.keys(components).map((type) => COMPONENT_CATEGORIES[type]).filter(Boolean)];
@@ -235,7 +242,13 @@ function collectEntities(resources) {
       }),
     });
   }
+  entities.spawnerCarrier = spawnerCarrier?.id ?? null;
   return entities;
+}
+
+function compareScores(a, b) {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return 0;
 }
 
 /** Walls, windows, doors, grilles and girders form the structure layer; everything else is an object. */
@@ -434,6 +447,7 @@ fs.writeFileSync(
     atlasColumns: columns,
     items: placed.map(({ credit, ...item }) => item),
     migrations: readMigrations(resources),
+    spawnerCarrier: entities.spawnerCarrier,
   })
 );
 fs.writeFileSync(

@@ -28,6 +28,33 @@ export interface Item {
   rot?: number;
   uid?: number;
   tile?: [flags: number, variant: number, rotation: number];
+  /** A random spawner placed from an entity set: the game picks what spawns, every round. */
+  spawner?: SpawnerData;
+  /** Brushes only: a random set to draw from; painting picks one entry per cell (never stored in a map). */
+  set?: string;
+}
+
+/** The game's RandomSpawner settings: one of `prototypes` spawns with `chance`; rarely one of `rarePrototypes`. */
+export interface SpawnerData {
+  name: string;
+  prototypes: string[];
+  chance: number;
+  rarePrototypes: string[];
+  rareChance: number;
+}
+
+/**
+ * A station area the game fills with one of several rooms each round (RoomFill). The rooms are modules of the
+ * slot's exact size; the export package turns them into dungeon rooms and the slot into a room marker.
+ */
+export interface RoomSlot {
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Module ids. */
+  modules: string[];
 }
 
 /** Several items in one cell, bottom first (stacking layers of stations). Always at least two items. */
@@ -73,6 +100,8 @@ export interface MapDocument {
   profile?: StationProfile;
   /** Modules placed in this map, so they can be updated to a newer version of the module later. */
   instances?: ModuleInstance[];
+  /** Stations: areas filled with a random room each round. */
+  roomSlots?: RoomSlot[];
 }
 
 /** A module (saved part of a map, e.g. a department) placed in a map. */
@@ -119,6 +148,7 @@ function sameItem(a: Item, b: Item): boolean {
     a.order === b.order &&
     a.rot === b.rot &&
     a.uid === b.uid &&
+    JSON.stringify(a.spawner) === JSON.stringify(b.spawner) &&
     (a.tile === b.tile || (!!a.tile && !!b.tile && a.tile.every((value, index) => value === b.tile![index])))
   );
 }
@@ -154,7 +184,7 @@ export function fromItems(items: Item[]): Brush | null {
 
 /** What a cell holds, ignoring rotation and identity: used to tell areas of "the same content" apart (fill, wand). */
 export function contentKey(brush: Brush | null | undefined): string {
-  return itemsOf(brush).map((item) => item.id).join("|");
+  return itemsOf(brush).map((item) => (item.spawner ? `${item.id}:${item.spawner.name}` : item.id)).join("|");
 }
 
 export function clampCohort(value: number): number {

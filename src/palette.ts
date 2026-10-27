@@ -42,6 +42,8 @@ export interface Palette {
   byLayer: Record<LayerId, Map<string, PaletteItem>>;
   /** The game's renamed entity ids: old id -> new id, or null when the game deletes it on load. */
   migrations: Map<string, string | null>;
+  /** A RandomSpawner entity that random sets are exported as (its spawn list is overridden per placement). */
+  spawnerCarrier: string | null;
 }
 
 /** Editor-only markers. They are not game entities; the runtime generator reads them. */
@@ -67,7 +69,11 @@ export async function loadPalette(): Promise<Palette> {
 }
 
 /** Builds the palette from palette.json data (also used by Node scripts, with no atlas image). */
-export function createPalette(data: { gameCommit?: string; iconSize: number; atlasColumns: number; items: PaletteItem[]; migrations?: Record<string, string | null> }, atlasUrl: string, atlas: HTMLImageElement): Palette {
+export function createPalette(
+  data: { gameCommit?: string; iconSize: number; atlasColumns: number; items: PaletteItem[]; migrations?: Record<string, string | null>; spawnerCarrier?: string | null },
+  atlasUrl: string,
+  atlas: HTMLImageElement
+): Palette {
   const items: PaletteItem[] = [...data.items, ...MARKERS];
   const byLayer = Object.fromEntries(LAYERS.map((layer) => [layer, new Map<string, PaletteItem>()])) as Palette["byLayer"];
   for (const item of items) byLayer[item.layer]?.set(item.id, item);
@@ -81,6 +87,7 @@ export function createPalette(data: { gameCommit?: string; iconSize: number; atl
     items,
     byLayer,
     migrations: new Map(Object.entries(data.migrations ?? {})),
+    spawnerCarrier: data.spawnerCarrier ?? null,
   };
 }
 

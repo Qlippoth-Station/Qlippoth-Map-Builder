@@ -10,9 +10,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { cellKey, fromItems, itemsOf, normalizeAngle, type Item } from "../src/document";
+import { cellKey, createDocument, fromItems, itemsOf, normalizeAngle, type Item } from "../src/document";
 import { createPalette } from "../src/palette";
 import { exportStation } from "../src/station/export";
+import { roomFiles } from "../src/station/gamemap";
 import { importStation } from "../src/station/import";
 import { mainGrid, parseMapFile } from "../src/station/mapfile";
 
@@ -117,6 +118,37 @@ check(reread.layers.floor.size === doc.layers.floor.size, `re-import has the sam
 // A new station from the template.
 const fresh = importStation(exportStation({ ...doc, station: undefined, name: "Test Station" }, palette).text, palette, "fresh");
 check(fresh.layers.floor.size === doc.layers.floor.size && count(fresh) === count(doc), "the same content written into a new station reads back");
+
+// ---- Random spawners and rooms ----
+const spawnerDoc = importStation(exportStation({ ...doc, station: undefined, name: "Spawner Test" }, palette).text, palette, "spawners");
+const spawnerKey = [...spawnerDoc.layers.floor.keys()].find((key) => !spawnerDoc.layers.object.has(key))!;
+const spawner = { name: "Plants", prototypes: ["PottedPlant1", "PottedPlant1", "PottedPlant2"], chance: 0.75, rarePrototypes: [], rareChance: 0 };
+spawnerDoc.layers.object.set(spawnerKey, { kind: "fixed", id: palette.spawnerCarrier!, spawner });
+const spawnerText = exportStation(spawnerDoc, palette).text;
+const spawnerFile = parseMapFile(spawnerText);
+const written = spawnerFile.entities.find((entity) => entity.spawner?.prototypes?.join() === spawner.prototypes.join());
+check(!!written && written.proto === palette.spawnerCarrier && written.spawner!.chance === 0.75 && written.spawner!.rarePrototypes!.length === 0, `random spawner written on ${palette.spawnerCarrier} with its list and chance`);
+const respawn = importStation(spawnerText, palette, "spawners");
+check(itemsOf(respawn.layers.object.get(spawnerKey)).some((item) => item.spawner?.prototypes.join() === spawner.prototypes.join()), "random spawner reads back as a spawner item");
+
+const room = createDocument("station", "Room A", 4, 3);
+for (let y = 0; y < 3; y++) for (let x = 0; x < 4; x++) room.layers.floor.set(cellKey(x, y), { kind: "fixed", id: "FloorWood" });
+room.layers.object.set(cellKey(1, 1), { kind: "fixed", id: "ChairOfficeDark" });
+const slotted = createDocument("station", "Slotted", 20, 12);
+for (let y = 0; y < 12; y++) for (let x = 0; x < 20; x++) slotted.layers.floor.set(cellKey(x, y), { kind: "fixed", id: "FloorSteel" });
+slotted.roomSlots = [{ name: "Theater", x: 5, y: 4, width: 4, height: 3, modules: ["a", "b"] }];
+const rooms = roomFiles(slotted, palette, "slotted", (id) => (id === "a" || id === "b" ? room : null));
+check(rooms.rooms === 2 && rooms.files.length === 2, `two rooms for the slot (${rooms.rooms})`);
+const atlas = parseMapFile(rooms.files[0].text);
+const atlasGrid = atlas.grids[0];
+check(atlas.grids.length === 1 && atlasGrid.uid === 1 && atlasGrid.tiles.size === 24, `atlas is one map-grid entity with both rooms' 24 tiles (${atlasGrid.tiles.size})`);
+const protos = rooms.files[1].text;
+const offsets = [...protos.matchAll(/offset: (-?\d+),(-?\d+)/g)].map((match) => [Number(match[1]), Number(match[2])]);
+check(offsets.length === 2 && offsets.every(([ox, oy]) => atlasGrid.tiles.has(`${ox},${oy}`) && atlasGrid.tiles.has(`${ox + 3},${oy + 2}`)), `dungeonRoom offsets point at the rooms on the atlas (${JSON.stringify(offsets)})`);
+check(/- type: Tag\n  id: SlottedTheaterRoom/.test(protos) && protos.includes("maxSize: 4, 3") && protos.includes("parent: BaseRoomMarker"), "tag, room marker with RoomFill of the slot size");
+check(atlas.entities.some((entity) => entity.proto === "ChairOfficeDark" && entity.parent === 1), "room entities stand on the atlas grid");
+check(itemsOf(rooms.station.layers.object.get(cellKey(7, 5))).some((item) => item.id === "SlottedTheaterRoomMarker"), "the station gets the room marker at the slot's middle");
+check(!slotted.layers.object.has(cellKey(7, 5)), "the document itself is not changed");
 
 console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

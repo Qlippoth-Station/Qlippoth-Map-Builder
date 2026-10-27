@@ -59,6 +59,21 @@ The **Modules** tab next to the palette keeps a library of map parts per mode (s
 - **Save project** downloads a `.project.zip` with `project.yml` (map, modules, placements), the map and every module
   of the mode; **Open project** reads it back (modules join the library as new versions).
 
+### Randomness
+
+The **Random** tab keeps random sets per mode (in the browser) and, for stations, random room slots:
+
+- A **random set** is a list of tiles or entities with weights. **Use** makes it the brush: every painted cell gets
+  one entry, picked by weight, so the map shows exactly what you get. On a station's Structure and Object layers a
+  set can instead be left to the game (**Game picks every round**): the map gets one `RandomSpawner` entity with the
+  set (weights become repeated entries) and a spawn chance, and the game picks what spawns there each round. Such
+  spawners show the set's first entry with a die badge.
+- A **room slot** is an area of the station (made from the selection) the game fills with one of several rooms at
+  round start, using its `RoomFill` system. Rooms are modules of the slot's exact size, ticked in the slot's list.
+  Saving and testing show what is painted in the slot now; the export package adds the rooms: an atlas map under
+  `Resources/Maps/Dungeon/`, `dungeonRoom` prototypes with a tag per slot, and a room marker entity at the middle of
+  each slot.
+
 ### Draft and Exportable
 
 Stations have two profiles, switched above the *Checks* list:
@@ -114,7 +129,7 @@ Press `?` in the editor for all shortcuts.
 | 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ✅ |
 | 5 | *Draft* / *Exportable* profiles, station checks, export package with the `gameMap` prototype | ✅ |
 | 6 | Module library (departments, rooms), placed instances with updates, edge checks, project files | ✅ |
-| 7 | Random spawners and `RoomFill` rooms | ⏳ |
+| 7 | Random sets (painted or `RandomSpawner`), random room slots (`RoomFill`) in the export package | ✅ |
 | 8 | Codebase picker for other SS14 forks | ⏳ |
 
 ## Development
@@ -155,6 +170,7 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | `src/storage.ts` | Autosave (IndexedDB, one slot per mode) |
 | `src/station/` | Game map reader (`mapfile.ts`), import, export, new-station template, station autosave |
 | `src/modules.ts`, `src/project.ts` | Module library and project files |
+| `src/randomsets.ts` | Random sets |
 | `src/gamefolder.ts` | Linked game server data folder |
 | `scripts/station-roundtrip.ts` | Round-trip test of station import/export against the game's maps |
 | `src/editor.ts` | Editor state, edits, undo/redo, checks |

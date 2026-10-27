@@ -51,7 +51,7 @@ export function exportProject(doc: MapDocument, palette: Palette, library: Modul
     // The editor's own state of the map (margins, profile), so the project opens exactly as it was saved.
     `editor: ${scalar("editor.json")}`,
     modules.length ? "modules:" : "modules: []",
-    ...modules.flatMap((module) => [`- name: ${scalar(module.name)}`, `  file: ${scalar(`modules/${slug(module.name)}${extension}`)}`]),
+    ...modules.flatMap((module) => [`- name: ${scalar(module.name)}`, `  id: ${scalar(module.id)}`, `  file: ${scalar(`modules/${slug(module.name)}${extension}`)}`]),
     doc.instances?.length ? "instances:" : "instances: []",
     ...(doc.instances ?? []).flatMap((instance) => [
       `- module: ${scalar(names.get(instance.module) ?? instance.name)}`,
@@ -85,12 +85,15 @@ export async function openProject(data: ArrayBuffer, palette: Palette, library: 
   if (!mode) throw new Error(`Unknown mode "${project.mode}".`);
 
   const ids = new Map<string, { id: string; updated: number }>();
+  // Module ids in the saved map (room slots) -> ids in this browser's library.
+  const renamed = new Map<string, string>();
   for (const module of project.modules) {
     const text = files.get(module.file);
     if (!text) continue;
     const doc = readMap(text, mode, module.name, palette);
     const record = library.put({ name: module.name, mode, width: doc.width, height: doc.height, text });
     ids.set(module.name, { id: record.id, updated: record.updated });
+    if (module.id) renamed.set(module.id, record.id);
   }
 
   const mapText = files.get(project.map);
@@ -98,6 +101,7 @@ export async function openProject(data: ArrayBuffer, palette: Palette, library: 
   const editorState = files.get(project.editor);
   const doc = (editorState && readStationAutosave(editorState, palette)) || readMap(mapText, mode, project.name, palette);
   doc.name = project.name || doc.name;
+  doc.roomSlots = doc.roomSlots?.map((slot) => ({ ...slot, modules: slot.modules.map((id) => renamed.get(id) ?? id) }));
   doc.instances = readInstances(
     project.instances
       .filter((instance) => ids.has(instance.module))
@@ -118,7 +122,7 @@ interface ProjectFile {
   mode: string;
   map: string;
   editor: string;
-  modules: { name: string; file: string }[];
+  modules: { name: string; id: string; file: string }[];
   instances: (Omit<ModuleInstance, "name" | "version"> & { module: string })[];
 }
 
@@ -152,7 +156,7 @@ function parseProject(text: string): ProjectFile {
     mode: String(top.mode ?? ""),
     map: String(top.map ?? ""),
     editor: String(top.editor ?? ""),
-    modules: ((top.modules as Record<string, unknown>[]) ?? []).map((module) => ({ name: String(module.name), file: String(module.file) })),
+    modules: ((top.modules as Record<string, unknown>[]) ?? []).map((module) => ({ name: String(module.name), id: String(module.id ?? ""), file: String(module.file) })),
     instances: ((top.instances as Record<string, unknown>[]) ?? []).map((instance) => ({
       module: String(instance.module),
       x: Number(instance.x),

@@ -1013,3 +1013,50 @@ button.warning:hover {
 .module-name .muted {
   font-size: 12px;
 }
+
+/* ---- Random tab -------------------------------------------------------------------------------- */
+
+.random li.active .module-name strong {
+  color: var(--accent);
+}
+
+.set-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+}
+
+.set-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.set-entries li {
+  display: flex;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.set-entries input {
+  width: 52px;
+}
+
+.set-resolve,
+.slot-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.set-resolve .field.inline {
+  justify-content: flex-start;
+}
