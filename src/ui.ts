@@ -1,6 +1,7 @@
-import { LAYERS, LAYER_NAMES, MAX_SIZE, MIN_SIZE, type LayerId } from "./document";
+import { LAYER_NAMES, MAX_SIZE, MIN_SIZE, type LayerId } from "./document";
 import { TOOLS, TOOL_INFO, type Editor, type Topic } from "./editor";
 import { clear, h } from "./dom";
+import { MODES, MODE_INFO, type ModeId } from "./modes";
 import { iconOrigin, type Palette, type PaletteItem } from "./palette";
 import type { MapView } from "./view";
 
@@ -52,8 +53,8 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
   const renderLayers = () =>
     clear(
       layers,
-      ...[...LAYERS].reverse().map((layer) => {
-        const index = LAYERS.indexOf(layer) + 1;
+      ...[...editor.layers].reverse().map((layer) => {
+        const index = editor.layers.indexOf(layer) + 1;
         const active = editor.activeLayer === layer;
         return h(
           "div",
@@ -235,6 +236,7 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
 // ---- Top bar ---------------------------------------------------------------------------------------
 
 export interface TopBarActions {
+  switchMode(mode: ModeId): void;
   newDocument(): void;
   open(): void;
   save(): void;
@@ -243,7 +245,8 @@ export interface TopBarActions {
 }
 
 export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement {
-  const name = h("input", { class: "doc-name", "aria-label": "Domain name", spellcheck: false });
+  const name = h("input", { class: "doc-name", spellcheck: false });
+  const modes = h("div", { class: "mode-switch", role: "group", "aria-label": "Mode" });
   const width = h("input", { type: "number", min: MIN_SIZE, max: MAX_SIZE, "aria-label": "Width", class: "size" });
   const height = h("input", { type: "number", min: MIN_SIZE, max: MAX_SIZE, "aria-label": "Height", class: "size" });
   const undo = h("button", { class: "secondary", title: "Undo (Ctrl+Z)", onclick: () => editor.undo() }, "Undo");
@@ -259,24 +262,45 @@ export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement
   width.addEventListener("change", applySize);
   height.addEventListener("change", applySize);
 
+  const renderModes = () =>
+    clear(
+      modes,
+      ...MODES.map((mode) =>
+        h(
+          "button",
+          {
+            class: editor.mode === mode ? "active" : "",
+            "aria-pressed": String(editor.mode === mode),
+            title: `${MODE_INFO[mode].hint}${editor.mode !== mode && editor.isDirty(mode) ? " (unsaved changes)" : ""}`,
+            onclick: () => actions.switchMode(mode),
+          },
+          MODE_INFO[mode].name,
+          editor.mode !== mode && editor.isDirty(mode) ? h("span", { class: "dot", "aria-hidden": "true" }, " •") : null
+        )
+      )
+    );
+
   const render = () => {
+    renderModes();
+    name.setAttribute("aria-label", `${MODE_INFO[editor.mode].name} name`);
     if (document.activeElement !== name) name.value = editor.doc.name;
     if (document.activeElement !== width) width.value = String(editor.doc.width);
     if (document.activeElement !== height) height.value = String(editor.doc.height);
     undo.disabled = !editor.canUndo;
     redo.disabled = !editor.canRedo;
     saveButton.classList.toggle("unsaved", editor.dirty);
-    document.title = `${editor.dirty ? "• " : ""}${editor.doc.name} – Domain Builder`;
+    document.title = `${editor.dirty ? "• " : ""}${editor.doc.name} – ${MODE_INFO[editor.mode].title}`;
   };
   render();
   editor.subscribe((topics) => {
-    if (topics.has("document") || topics.has("history") || topics.has("cells")) render();
+    if (topics.has("document") || topics.has("history") || topics.has("cells") || topics.has("mode")) render();
   });
 
   return h(
     "header",
     { class: "topbar" },
-    h("div", { class: "brand" }, h("span", { class: "logo", "aria-hidden": "true" }, "◇"), h("span", {}, "Domain Builder")),
+    h("div", { class: "brand" }, h("span", { class: "logo", "aria-hidden": "true" }, "◇"), h("span", {}, "Map Builder")),
+    modes,
     name,
     h("label", { class: "size-field" }, h("span", {}, "W"), width),
     h("label", { class: "size-field" }, h("span", {}, "H"), height),

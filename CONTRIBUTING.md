@@ -2,7 +2,7 @@
 
 ## Adding domains or templates
 
-1. Build it in the editor and **Save** the `.domain.json` file.
+1. Build it in the editor (Domain mode) and **Save** the `.domain.json` file.
 2. Open a pull request in the game repository with the file (location will be documented once the game side exists).
 3. Make sure the *Checks* panel is clean, or explain in the PR why a warning is fine.
 
