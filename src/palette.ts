@@ -24,7 +24,7 @@ export interface Palette {
 
 /** Editor-only markers. They are not game entities; the runtime generator reads them. */
 export const MARKERS: PaletteItem[] = [
-  { id: "Entry", name: "Entry", layer: "marker", category: "Markers", icon: null, color: "#3fb27f", glyph: "E", description: "Where the Q-Gate drops players. Exactly one." },
+  { id: "Entry", name: "Entry", layer: "marker", category: "Markers", icon: null, color: "#3fb27f", glyph: "E", description: "Where the Q-Gate drops players. Place one or more; the Entries panel sets their order." },
   { id: "QlippothSpot", name: "Qlippoth spot", layer: "marker", category: "Markers", icon: null, color: "#a871e0", glyph: "Q", description: "Where the Qlippoth is spawned." },
   { id: "Objective", name: "Objective", layer: "marker", category: "Markers", icon: null, color: "#e0a63a", glyph: "O", description: "A rift objective (QGateDungeonObjective) is placed here." },
   { id: "Connection", name: "Connection", layer: "marker", category: "Markers", icon: null, color: "#3ab0e0", glyph: "C", description: "A doorway other templates can attach to." },
