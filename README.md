@@ -43,6 +43,18 @@ links and other component data) is kept and written back. Edits change only what
 - when tiles change, the grid's chunks and atmosphere are rewritten: existing tiles keep their gas mixture, new tiles
   get standard air, so the station does not open as vacuum.
 
+### Testing in the game
+
+**Game** links the game server's data folder (Chrome and Edge; for a development server `bin/Content.Server/data`).
+The game's `loadmap` / `loadgrid` commands read from that folder and `savemap` / `savegrid` write into it, so:
+
+1. **Export station here** writes the station's `.yml` into the folder.
+2. In the game's console: `loadmap 10 /name.yml` (any unused map id), then `tp 0 0 10` as an admin ghost.
+3. After changing things in the game, `savemap 10 /name.yml` writes them back; the file shows up in the dialog's list
+   to **Open** (or **Add** into the current map).
+
+The dialog shows the commands ready to copy. Other browsers use Save and copy the file into the folder by hand.
+
 A station made from scratch is written into a template map (one station grid with the components the game's station
 grids carry, a `BecomesStation` id from the name). Entities added with **Add** from another map are placed as new
 entities of the same prototype and rotation; their extra data (locker contents, links) belongs to the other map.
@@ -69,7 +81,7 @@ Press `?` in the editor for all shortcuts.
 | 2 | Palette v2: classification by component instead of folder, markers, fills, rotation metadata, game id renames | ✅ |
 | 3a | Import game map `.yml` files (fast line scanner), several entities per cell, rotation display, chunk-cached rendering, Cell panel | ✅ |
 | 3b | Editing stations: turning (T), Cell panel turn/remove, turning selections; game map `.yml` export with a lossless round trip | ✅ |
-| 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ⏳ |
+| 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ✅ |
 | 5 | *Exportable* profile: full station checks, `gameMap` prototype export | ⏳ |
 | 6 | Modules (departments) and project files | ⏳ |
 | 7 | Random spawners and `RoomFill` rooms | ⏳ |

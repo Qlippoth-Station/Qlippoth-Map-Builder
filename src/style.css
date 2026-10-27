@@ -843,3 +843,90 @@ button.warning:hover {
   font-size: 11px;
   color: var(--text-muted);
 }
+
+/* ---- Game server dialog ----------------------------------------------------------------------- */
+
+.game-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.game-folder p {
+  margin: 0;
+}
+
+.game-folder h3 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.commands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.command {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.command code {
+  padding: 3px 6px;
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.command .muted {
+  font-size: 12px;
+}
+
+.map-id {
+  width: 80px;
+}
+
+.folder-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.folder-files li {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.folder-files code {
+  overflow-wrap: anywhere;
+}
+
+.game-folder .status {
+  color: var(--ok);
+}
+
+@media (max-width: 640px) {
+  .command {
+    grid-template-columns: 1fr auto;
+  }
+
+  .command .muted {
+    grid-column: 1 / -1;
+  }
+}
+
+.commands .field.inline {
+  justify-content: flex-start;
+}

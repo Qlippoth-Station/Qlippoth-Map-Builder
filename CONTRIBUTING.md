@@ -8,7 +8,8 @@
 
 ## Changing the editor
 
-- Keep the editor fully client-side: no backend, no tracking, no external requests besides its own files.
+- Keep the editor fully client-side: no backend, no tracking, no external requests besides its own files. Local files
+  and the linked game folder are only read or written when the user asks for it.
 - Any change to the file format needs a `version` bump in `src/document.ts` and an update to `docs/format.md`.
 - Run `npm run build` before opening a pull request; CI runs the same command.
 - Do not commit `public/palette/`; it is generated from the game repository.

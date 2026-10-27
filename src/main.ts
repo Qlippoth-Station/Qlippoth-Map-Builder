@@ -3,6 +3,7 @@ import { LAYER_NAMES, clampSize, createDocument, deserialize, itemsOf, serialize
 import { ACTIONS, ACTION_INFO, Editor, SHAPES, SHAPE_INFO } from "./editor";
 import { clear, h } from "./dom";
 import { MODE_INFO, type ModeId } from "./modes";
+import { GameFolder, type FolderFile } from "./gamefolder";
 import { findItem, loadPalette, type Palette } from "./palette";
 import { readStationAutosave, stationAutosave } from "./station/autosave";
 import { exportStation } from "./station/export";
@@ -35,6 +36,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
   };
 
   const editor = new Editor(palette, documentFor(autosaves.lastMode ?? "domain"));
+  const gameFolder = new GameFolder();
+  void gameFolder.restore();
   const stage = h("section", { class: "stage" });
   const status = h("footer", { class: "statusbar" });
   const dialog = h("dialog", { class: "dialog" });
@@ -110,25 +113,27 @@ function start(palette: Palette, autosaves: Autosaves): void {
     },
     /** Brings another file of the same mode into the current map as floating content, centred in the view. */
     add() {
-      pickDocument((doc, file) => {
-        const target = MODE_INFO[editor.mode].name.toLowerCase();
-        if (doc.mode !== editor.mode) {
-          window.alert(`${file.name} is a ${MODE_INFO[doc.mode].name.toLowerCase()} file. Only ${target} files can be added to a ${target}.`);
-          return;
-        }
-        const { width, height } = editor.doc;
-        if (doc.width > width || doc.height > height) {
-          const [w, h] = [Math.max(width, doc.width), Math.max(height, doc.height)];
-          const grow = window.confirm(
-            `${file.name} is ${doc.width}×${doc.height}, larger than this ${target} (${width}×${height}).\n\n` +
-              `OK: enlarge the map to ${w}×${h}.\nCancel: keep the size; parts outside the map are left out when placed.`
-          );
-          if (grow) editor.resize(w, h);
-        }
-        const [cx, cy] = view.centerCell();
-        const place = (center: number, size: number, room: number) => Math.max(0, Math.min(room - size, center - Math.floor(size / 2)));
-        editor.addDocument(doc, place(cx, doc.width, editor.doc.width), place(cy, doc.height, editor.doc.height));
-      });
+      pickDocument((doc, file) => actions.addDocument(doc, file.name));
+    },
+    /** Brings a document of the same mode in as floating content, centred in the view (offering to grow the map). */
+    addDocument(doc: MapDocument, label: string) {
+      const target = MODE_INFO[editor.mode].name.toLowerCase();
+      if (doc.mode !== editor.mode) {
+        window.alert(`${label} is a ${MODE_INFO[doc.mode].name.toLowerCase()} file. Only ${target} files can be added to a ${target}.`);
+        return;
+      }
+      const { width, height } = editor.doc;
+      if (doc.width > width || doc.height > height) {
+        const [w, h] = [Math.max(width, doc.width), Math.max(height, doc.height)];
+        const grow = window.confirm(
+          `${label} is ${doc.width}×${doc.height}, larger than this ${target} (${width}×${height}).\n\n` +
+            `OK: enlarge the map to ${w}×${h}.\nCancel: keep the size; parts outside the map are left out when placed.`
+        );
+        if (grow) editor.resize(w, h);
+      }
+      const [cx, cy] = view.centerCell();
+      const place = (center: number, size: number, room: number) => Math.max(0, Math.min(room - size, center - Math.floor(size / 2)));
+      editor.addDocument(doc, place(cx, doc.width, editor.doc.width), place(cy, doc.height, editor.doc.height));
     },
     save() {
       editor.commitFloating();
@@ -151,6 +156,9 @@ function start(palette: Palette, autosaves: Autosaves): void {
     },
     showHelp() {
       showHelpDialog();
+    },
+    showGame() {
+      showGameDialog();
     },
   };
 
@@ -228,6 +236,130 @@ function start(palette: Palette, autosaves: Autosaves): void {
       "Shortcuts",
       h("table", { class: "shortcuts" }, h("tbody", {}, ...rows.map(([key, what]) => h("tr", {}, h("td", {}, h("kbd", {}, key)), h("td", {}, what)))))
     );
+  }
+
+  /** The game server's data folder: export straight into it, open what the game saved, commands to copy. */
+  function showGameDialog() {
+    const body = h("div", { class: "game-folder" });
+    openDialog("Game server", body);
+    const mapId = h("input", { type: "number", min: 2, value: "10", class: "map-id", "aria-label": "Map id" });
+    let status = "";
+    let lastPath = `/${fileName(editor.doc.name, "station")}`;
+
+    const command = (text: string, hint: string) =>
+      h(
+        "div",
+        { class: "command" },
+        h("code", {}, text),
+        h("button", { type: "button", class: "ghost", title: "Copy", onclick: () => void navigator.clipboard?.writeText(text) }, "Copy"),
+        h("span", { class: "muted" }, hint)
+      );
+    const commands = () =>
+      h(
+        "div",
+        { class: "commands" },
+        h("label", { class: "field inline" }, h("span", {}, "Map id for loadmap"), mapId),
+        command(`loadmap ${mapId.value} ${lastPath}`, "loads the station as a new map (pick an unused map id)"),
+        command(`tp 0 0 ${mapId.value}`, "takes you there (as an admin ghost)"),
+        command(`savemap ${mapId.value} ${lastPath}`, "writes your in-game changes back; add true at the end if the game asks to force it")
+      );
+    mapId.addEventListener("change", () => void render());
+
+    const openFile = async (file: FolderFile, add: boolean) => {
+      try {
+        const doc = readDocument(await gameFolder.read(file), file.path.split("/").pop()!);
+        dialog.close();
+        if (add) {
+          actions.addDocument(doc, file.path);
+        } else if (confirmDiscard(doc.mode)) {
+          editor.replaceDocument(doc);
+          saveLastMode(doc.mode);
+          view.fit();
+        }
+      } catch (error) {
+        status = `Could not open ${file.path}: ${(error as Error).message}`;
+        void render();
+      }
+    };
+
+    const render = async () => {
+      if (!GameFolder.supported) {
+        clear(
+          body,
+          h("p", {}, "This browser cannot link folders (Chrome and Edge can). Save downloads the station's .yml instead: put it in the game server's data folder, then use these commands in the game's console:"),
+          commands()
+        );
+        return;
+      }
+      if (!gameFolder.linked) {
+        clear(
+          body,
+          h(
+            "p",
+            {},
+            "Link the game server's data folder (for a development server: ",
+            h("code", {}, "bin/Content.Server/data"),
+            "). The game's loadmap and savemap commands read and write there, so stations go to the game and back without downloads."
+          ),
+          h("div", { class: "button-row" }, h("button", { type: "button", class: "primary", onclick: () => void gameFolder.link().then(render, () => undefined) }, "Link folder…"))
+        );
+        return;
+      }
+      const files = await gameFolder.list().catch(() => [] as FolderFile[]);
+      const station = editor.mode === "station";
+      clear(
+        body,
+        h("p", {}, "Linked folder: ", h("strong", {}, gameFolder.name)),
+        h(
+          "div",
+          { class: "button-row" },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "primary",
+              disabled: !station,
+              title: station ? "Write the station as a .yml into the folder" : "Only stations can be loaded in the game",
+              onclick: async () => {
+                editor.commitFloating();
+                try {
+                  const { text, summary } = exportStation(editor.doc, palette);
+                  lastPath = await gameFolder.write(fileName(editor.doc.name, "station"), text);
+                  editor.markSaved();
+                  status = `Wrote ${lastPath} (${summary.entities} entities).`;
+                } catch (error) {
+                  status = `Could not write: ${(error as Error).message}`;
+                }
+                void render();
+              },
+            },
+            "Export station here"
+          ),
+          h("button", { type: "button", class: "secondary", onclick: () => void render() }, "Refresh"),
+          h("button", { type: "button", class: "secondary", onclick: () => void gameFolder.unlink().then(render) }, "Unlink")
+        ),
+        status ? h("p", { class: "status" }, status) : null,
+        commands(),
+        h("h3", {}, `Maps in the folder · ${files.length}`),
+        files.length
+          ? h(
+              "ul",
+              { class: "folder-files" },
+              ...files.slice(0, 100).map((file) =>
+                h(
+                  "li",
+                  {},
+                  h("code", {}, file.path),
+                  h("span", { class: "muted" }, new Date(file.modified).toLocaleString()),
+                  h("button", { type: "button", class: "secondary", onclick: () => void openFile(file, false) }, "Open"),
+                  h("button", { type: "button", class: "secondary", title: "Add into the current map", onclick: () => void openFile(file, true) }, "Add")
+                )
+              )
+            )
+          : h("p", { class: "muted" }, "No .yml files yet. Maps saved with savemap appear here.")
+      );
+    };
+    void render();
   }
 
   async function showCreditsDialog() {
