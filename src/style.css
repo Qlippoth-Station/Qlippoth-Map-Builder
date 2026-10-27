@@ -646,3 +646,29 @@ button.warning:hover {
     width: 100%;
   }
 }
+
+/* ---- Mode switch ------------------------------------------------------------------------------ */
+
+.mode-switch {
+  display: flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.mode-switch button {
+  padding: 3px 10px;
+  color: var(--text-muted);
+}
+
+.mode-switch button:hover {
+  color: var(--text);
+}
+
+.mode-switch button.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}

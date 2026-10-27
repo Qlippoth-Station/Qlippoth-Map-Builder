@@ -1,6 +1,16 @@
-# Domain file format (version 1)
+# File formats (version 1)
 
-A domain file is JSON with the `.domain.json` extension.
+The editor reads and writes two kinds of file. The `format` field decides which mode a file opens in.
+
+| Mode | `format` | Extension | Layers |
+|---|---|---|---|
+| Domain | `qlippoth-domain` | `.domain.json` | `floor`, `structure`, `object`, `marker` |
+| Station | `qlippoth-station` | `.station.json` | `floor`, `structure`, `object` |
+
+Both share the structure below. The station file is a working file for the editor; the game will get station maps
+as its own map `.yml` files once export lands (see the README roadmap).
+
+## Domain file
 
 ```json
 {
@@ -44,3 +54,18 @@ Version 1 only has fixed brushes:
 
 Later versions will add set brushes with random modes (weak / default / full / chance) and roll scopes (cell / group / map).
 Readers must reject files whose `version` they do not know.
+
+## Station file
+
+Same structure as a domain file, with `"format": "qlippoth-station"` and no `marker` layer:
+
+```json
+{
+  "format": "qlippoth-station",
+  "version": 1,
+  "name": "Medbay",
+  "width": 64,
+  "height": 64,
+  "layers": { "floor": {}, "structure": {}, "object": {} }
+}
+```

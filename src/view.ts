@@ -1,4 +1,4 @@
-import { LAYERS, inBounds, type Brush, type LayerId } from "./document";
+import { inBounds, type Brush, type LayerId } from "./document";
 import type { Editor } from "./editor";
 import { iconOrigin } from "./palette";
 
@@ -121,7 +121,7 @@ export class MapView {
     const maxY = Math.min(doc.height - 1, doc.height - 1 - Math.floor(-this.offsetY / cell));
     const minY = Math.max(0, doc.height - 1 - Math.floor((viewHeight - this.offsetY) / cell));
 
-    for (const layer of LAYERS) {
+    for (const layer of editor.layers) {
       if (!editor.visible[layer]) continue;
       ctx.globalAlpha = editor.dimInactive && layer !== editor.activeLayer ? 0.3 : 1;
       const cells = doc.layers[layer];
@@ -355,7 +355,7 @@ export class MapView {
   private pick(x: number, y: number): void {
     const editor = this.editor;
     if (!inBounds(editor.doc, x, y)) return;
-    const order: LayerId[] = [editor.activeLayer, ...[...LAYERS].reverse().filter((layer) => layer !== editor.activeLayer)];
+    const order: LayerId[] = [editor.activeLayer, ...[...editor.layers].reverse().filter((layer) => layer !== editor.activeLayer)];
     for (const layer of order) {
       const brush = editor.visible[layer] ? editor.get(layer, x, y) : null;
       if (brush) {

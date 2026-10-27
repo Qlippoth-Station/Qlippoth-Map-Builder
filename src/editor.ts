@@ -6,9 +6,10 @@ import {
   parseKey,
   sameBrush,
   type Brush,
-  type DomainDocument,
   type LayerId,
+  type MapDocument,
 } from "./document";
+import { MODE_INFO, type ModeId } from "./modes";
 import type { Palette } from "./palette";
 
 export const TOOLS = ["brush", "rect", "fill", "erase", "pick"] as const;
@@ -23,7 +24,7 @@ export const TOOL_INFO: Record<ToolId, { name: string; key: string; hint: string
 };
 
 /** What changed, so views only redo the work they need. */
-export type Topic = "cells" | "document" | "selection" | "view" | "history";
+export type Topic = "cells" | "document" | "selection" | "view" | "history" | "mode";
 
 type Change =
   | { type: "cell"; layer: LayerId; key: string; before: Brush | null; after: Brush | null }
@@ -35,8 +36,31 @@ export interface Warning {
   at?: [number, number];
 }
 
+/** Everything that belongs to one mode's document; the mode being left is parked in this form. */
+interface Session {
+  doc: MapDocument;
+  activeLayer: LayerId;
+  selected: Record<LayerId, string | null>;
+  undoStack: Change[][];
+  redoStack: Change[][];
+  revision: number;
+  savedRevision: number;
+}
+
+function newSession(doc: MapDocument): Session {
+  return {
+    doc,
+    activeLayer: "floor",
+    selected: { floor: null, structure: null, object: null, marker: null },
+    undoStack: [],
+    redoStack: [],
+    revision: 0,
+    savedRevision: 0,
+  };
+}
+
 export class Editor {
-  doc: DomainDocument;
+  doc: MapDocument;
   activeLayer: LayerId = "floor";
   tool: ToolId = "brush";
   selected: Record<LayerId, string | null> = { floor: null, structure: null, object: null, marker: null };
@@ -50,12 +74,22 @@ export class Editor {
   private undoStack: Change[][] = [];
   private redoStack: Change[][] = [];
   private stroke: Change[] | null = null;
+  private parked: Partial<Record<ModeId, Session>> = {};
   private listeners = new Set<(topics: Set<Topic>) => void>();
   private queued = new Set<Topic>();
   private flushScheduled = false;
 
-  constructor(readonly palette: Palette, doc: DomainDocument) {
+  constructor(readonly palette: Palette, doc: MapDocument) {
     this.doc = doc;
+  }
+
+  get mode(): ModeId {
+    return this.doc.mode;
+  }
+
+  /** Layers of the current mode, bottom to top. */
+  get layers(): readonly LayerId[] {
+    return MODE_INFO[this.doc.mode].layers;
   }
 
   subscribe(listener: (topics: Set<Topic>) => void): () => void {
@@ -77,6 +111,50 @@ export class Editor {
 
   get dirty(): boolean {
     return this.revision !== this.savedRevision;
+  }
+
+  isDirty(mode: ModeId): boolean {
+    if (mode === this.mode) return this.dirty;
+    const session = this.parked[mode];
+    return !!session && session.revision !== session.savedRevision;
+  }
+
+  get anyDirty(): boolean {
+    return this.dirty || Object.values(this.parked).some((session) => session.revision !== session.savedRevision);
+  }
+
+  // ---- Modes -----------------------------------------------------------------------------------
+
+  /**
+   * Switches to another mode. The mode being left keeps its document, undo history and selection;
+   * `create` makes the document when the target mode has not been opened in this tab yet.
+   */
+  switchMode(mode: ModeId, create: () => MapDocument): void {
+    if (mode === this.mode) return;
+    this.endStroke();
+    this.parked[this.mode] = this.capture();
+    const next = this.parked[mode] ?? newSession(create());
+    delete this.parked[mode];
+    this.restore(next);
+    this.emit("mode", "document", "cells", "history", "selection", "view");
+  }
+
+  private capture(): Session {
+    const { doc, activeLayer, selected, undoStack, redoStack, revision, savedRevision } = this;
+    return { doc, activeLayer, selected, undoStack, redoStack, revision, savedRevision };
+  }
+
+  private restore(session: Session): void {
+    this.stroke = null;
+    ({
+      doc: this.doc,
+      activeLayer: this.activeLayer,
+      selected: this.selected,
+      undoStack: this.undoStack,
+      redoStack: this.redoStack,
+      revision: this.revision,
+      savedRevision: this.savedRevision,
+    } = session);
   }
 
   // ---- Selection / view state ------------------------------------------------------------------
@@ -222,7 +300,13 @@ export class Editor {
     return this.redoStack.length > 0;
   }
 
-  replaceDocument(doc: DomainDocument): void {
+  /** Replaces the document of its mode (switching to that mode first); that mode's history is dropped. */
+  replaceDocument(doc: MapDocument): void {
+    if (doc.mode !== this.mode) {
+      delete this.parked[doc.mode];
+      this.switchMode(doc.mode, () => doc);
+      return;
+    }
     this.stroke = null;
     this.doc = doc;
     this.undoStack = [];
@@ -260,6 +344,20 @@ export class Editor {
 
   validate(): Warning[] {
     const warnings: Warning[] = [];
+    if (this.mode === "domain") this.validateDomain(warnings);
+
+    for (const layer of this.layers) {
+      const missing = new Map<string, [number, number]>();
+      for (const [key, brush] of this.doc.layers[layer]) {
+        if (!this.palette.byLayer[layer].has(brush.id) && !missing.has(brush.id)) missing.set(brush.id, parseKey(key));
+      }
+      for (const [id, at] of missing) warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette).`, at });
+    }
+    return warnings;
+  }
+
+  /** Q-Gate rules: one entry, a Qlippoth spot, markers on walkable floor. */
+  private validateDomain(warnings: Warning[]): void {
     const markers = this.doc.layers.marker;
     const positions = (id: string) =>
       [...markers.entries()].filter(([, brush]) => brush.id === id).map(([key]) => parseKey(key));
@@ -277,15 +375,6 @@ export class Editor {
         warnings.push({ message: "Marker inside a wall.", at: [x, y] });
       }
     }
-
-    for (const layer of LAYERS) {
-      const missing = new Map<string, [number, number]>();
-      for (const [key, brush] of this.doc.layers[layer]) {
-        if (!this.palette.byLayer[layer].has(brush.id) && !missing.has(brush.id)) missing.set(brush.id, parseKey(key));
-      }
-      for (const [id, at] of missing) warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette).`, at });
-    }
-    return warnings;
   }
 }
 

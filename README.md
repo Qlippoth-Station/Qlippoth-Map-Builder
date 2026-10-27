@@ -1,21 +1,32 @@
-# Qlippoth Domain Builder
+# Qlippoth Map Builder
 
-A browser-based, visual editor for the rift domains of [Qlippoth Station](https://github.com/Qlippoth-Station/Qlippoth-station-14).
-Contributors paint domains and templates cell by cell with real game sprites, then save them as `.json` files the game reads.
+A browser-based, visual editor for [Qlippoth Station](https://github.com/Qlippoth-Station/Qlippoth-station-14) maps.
+Contributors paint maps cell by cell with real game sprites, then save them as files the game reads.
+
+The editor has two modes, switched in the top bar. Both share the same tools, palette and shortcuts:
+
+| Mode | For | Saves |
+|---|---|---|
+| **Domain** | Rift domains and templates for the Q-Gate | `.domain.json` |
+| **Station** | Station maps and station parts (departments) | `.station.json` (working file until game map export lands, see roadmap) |
+
+Each mode keeps its own document, undo history and autosave, so switching never loses work.
 
 Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved in your own browser and shared as files.
 
 ## Using it
 
-1. Pick a layer (Floor, Structure, Object, Marker).
+1. Pick a mode, then a layer (Floor, Structure, Object, and Marker in domain mode).
 2. Pick an item from the palette on the right.
 3. Paint with Brush, Rectangle or Fill. Right click picks what is under the cursor.
-4. Place one **Entry** and one **Qlippoth spot** marker. The *Checks* panel lists anything that is missing.
-5. **Save** downloads a `.domain.json` file. Open it again later or add it to a pull request.
+4. Domains: place one **Entry** and one **Qlippoth spot** marker. The *Checks* panel lists anything that is missing.
+5. **Save** downloads the file. **Open** takes either kind of file and switches to its mode.
 
 Press `?` in the editor for all shortcuts.
 
 ## Roadmap
+
+### Domain mode
 
 | Stage | Contents | Status |
 |---|---|---|
@@ -24,6 +35,20 @@ Press `?` in the editor for all shortcuts.
 | 3 | Templates, template sets, connection points, rotate/mirror, compatibility checks | ⏳ |
 | 4 | Game side: `RecipeDungeon` reads the files and resolves randomness with the same seeded RNG | ⏳ |
 | 5 | Fully random domains built from the same template library | ⏳ |
+
+### Station mode
+
+| Phase | Contents | Status |
+|---|---|---|
+| 1 | Mode system (domain / station), per-mode autosave in IndexedDB | ✅ |
+| 2 | Palette v2: classification by component instead of folder, markers, fills, rotation metadata | ⏳ |
+| 3a | Import game map `.yml` files (fast line scanner), chunk-cached rendering | ⏳ |
+| 3b | Several entities per cell, rotation, game map `.yml` export (lossless round trip), *Draft* profile | ⏳ |
+| 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ⏳ |
+| 5 | *Exportable* profile: full station checks, `gameMap` prototype export | ⏳ |
+| 6 | Modules (departments) and project files | ⏳ |
+| 7 | Random spawners and `RoomFill` rooms | ⏳ |
+| 8 | Codebase picker for other SS14 forks | ⏳ |
 
 ## Development
 
@@ -46,7 +71,9 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | Path | What |
 |---|---|
 | `scripts/build-palette.mjs` | Reads tile and entity prototypes, resolves inheritance, builds `palette.json`, `atlas.png`, `credits.json` |
-| `src/document.ts` | Domain document model and file format |
+| `src/modes.ts` | Mode definitions: layers, file suffix, defaults |
+| `src/document.ts` | Document model and file formats |
+| `src/storage.ts` | Autosave (IndexedDB, one slot per mode) |
 | `src/editor.ts` | Editor state, edits, undo/redo, checks |
 | `src/view.ts` | Canvas rendering, camera and tool input |
 | `src/ui.ts` | Side panels and top bar |
