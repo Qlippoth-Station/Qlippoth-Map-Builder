@@ -786,3 +786,60 @@ button.warning:hover {
   font-family: var(--mono);
   font-size: 11px;
 }
+
+/* ---- Cell panel -------------------------------------------------------------------------------- */
+
+.cell-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cell-panel[hidden] {
+  display: none;
+}
+
+.cell-panel h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cell-panel .close {
+  padding: 0 4px;
+}
+
+.cell-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.cell-items li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cell-item-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+
+.cell-item-name small {
+  color: var(--text-muted);
+}
+
+.cell-items .rot {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}

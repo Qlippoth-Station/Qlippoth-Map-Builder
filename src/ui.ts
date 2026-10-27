@@ -1,4 +1,4 @@
-import { ENTRY_MODES, LAYER_NAMES, MAX_COHORT, MAX_SIZE, MIN_SIZE, parseKey, type EntryMode, type LayerId } from "./document";
+import { ENTRY_MODES, LAYER_NAMES, MAX_COHORT, MIN_SIZE, itemsOf, parseKey, type EntryMode, type LayerId } from "./document";
 import { ACTIONS, ACTION_INFO, SHAPES, SHAPE_INFO, type Editor, type Topic } from "./editor";
 import { clear, h } from "./dom";
 import { MODES, MODE_INFO, type ModeId } from "./modes";
@@ -36,6 +36,7 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
   const tools = h("div", { class: "tools" });
   const layers = h("div", { class: "layer-list" });
   const selectionSection = h("section", { class: "selection-panel" });
+  const cellSection = h("section", { class: "cell-panel" });
   const entrySection = h("section", { class: "entry-panel" });
   const options = h("div", { class: "options" });
   const warnings = h("div", { class: "warnings" });
@@ -121,6 +122,31 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
         h("button", { class: "secondary", title: "Deselect (Esc)", onclick: () => editor.deselect() }, "Deselect")
       ),
       allLayers
+    );
+  };
+
+  const renderCell = () => {
+    const at = editor.inspected;
+    cellSection.hidden = !at;
+    if (!at) return;
+    const [x, y] = at;
+    const rows = editor.layers.flatMap((layer) =>
+      itemsOf(editor.get(layer, x, y)).map((brush) => {
+        const item = findItem(editor.palette, layer, brush.id);
+        const degrees = brush.rot ? Math.round((brush.rot * 180) / Math.PI) : 0;
+        return h(
+          "li",
+          { title: `${brush.id}${brush.uid !== undefined ? `\nuid ${brush.uid}` : ""}` },
+          icon(editor.palette, item, brush.id),
+          h("span", { class: "cell-item-name" }, item?.name ?? brush.id, h("small", {}, LAYER_NAMES[layer])),
+          degrees ? h("span", { class: "rot" }, `${degrees}°`) : null
+        );
+      })
+    );
+    clear(
+      cellSection,
+      h("h2", {}, `Cell ${x}, ${y}`, h("button", { class: "ghost close", title: "Close", "aria-label": "Close cell panel", onclick: () => editor.inspect(-1, -1) }, "✕")),
+      rows.length ? h("ul", { class: "cell-items" }, ...rows) : h("p", { class: "muted" }, "Empty.")
     );
   };
 
@@ -277,12 +303,14 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
   renderTools();
   renderLayers();
   renderSelection();
+  renderCell();
   renderEntries();
   renderOptions();
   renderWarnings();
   editor.subscribe((topics: Set<Topic>) => {
     if (topics.has("selection")) renderTools();
     if (topics.has("area") || topics.has("selection")) renderSelection();
+    if (topics.has("area") || topics.has("cells") || topics.has("document")) renderCell();
     if (topics.has("cells") || topics.has("document") || topics.has("mode")) renderEntries();
     if (topics.has("selection") || topics.has("view") || topics.has("cells") || topics.has("document")) renderLayers();
     if (topics.has("view")) renderOptions();
@@ -294,6 +322,7 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
     { class: "sidebar left" },
     h("section", {}, h("h2", {}, "Tools"), tools),
     selectionSection,
+    cellSection,
     h("section", {}, h("h2", {}, "Layers"), layers),
     entrySection,
     h("section", {}, h("h2", {}, "View"), options),
@@ -404,8 +433,8 @@ export interface TopBarActions {
 export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement {
   const name = h("input", { class: "doc-name", spellcheck: false });
   const modes = h("div", { class: "mode-switch", role: "group", "aria-label": "Mode" });
-  const width = h("input", { type: "number", min: MIN_SIZE, max: MAX_SIZE, "aria-label": "Width", class: "size" });
-  const height = h("input", { type: "number", min: MIN_SIZE, max: MAX_SIZE, "aria-label": "Height", class: "size" });
+  const width = h("input", { type: "number", min: MIN_SIZE, "aria-label": "Width", class: "size" });
+  const height = h("input", { type: "number", min: MIN_SIZE, "aria-label": "Height", class: "size" });
   const undo = h("button", { class: "secondary", title: "Undo (Ctrl+Z)", onclick: () => editor.undo() }, "Undo");
   const redo = h("button", { class: "secondary", title: "Redo (Ctrl+Y)", onclick: () => editor.redo() }, "Redo");
   const saveButton = h("button", { class: "primary", title: "Download .json (Ctrl+S)", onclick: () => actions.save() }, "Save");
@@ -440,6 +469,7 @@ export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement
   const render = () => {
     renderModes();
     name.setAttribute("aria-label", `${MODE_INFO[editor.mode].name} name`);
+    width.max = height.max = String(MODE_INFO[editor.mode].maxSize);
     if (document.activeElement !== name) name.value = editor.doc.name;
     if (document.activeElement !== width) width.value = String(editor.doc.width);
     if (document.activeElement !== height) height.value = String(editor.doc.height);
@@ -467,7 +497,7 @@ export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement
       "div",
       { class: "group" },
       h("button", { class: "secondary", onclick: () => actions.newDocument() }, "New"),
-      h("button", { class: "secondary", title: "Open .json (Ctrl+O)", onclick: () => actions.open() }, "Open"),
+      h("button", { class: "secondary", title: "Open a .json file or a game map .yml (Ctrl+O)", onclick: () => actions.open() }, "Open"),
       h("button", { class: "secondary", title: "Add another file of the same kind into this map (Ctrl+Shift+O)", onclick: () => actions.add() }, "Add"),
       saveButton
     ),

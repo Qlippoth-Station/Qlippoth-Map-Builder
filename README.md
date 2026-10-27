@@ -20,13 +20,16 @@ Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved 
 2. Pick an item from the palette on the right.
 3. Choose an **action** (Brush, Erase, Select) and a **shape** (Single, Rectangle, Fill); every action works with every shape.
    Right click picks what is under the cursor.
+   In station mode the Structure and Object layers hold a stack per cell, like the game: painting adds the item on
+   top, erasing clears the cell. Right click shows everything in a cell in the *Cell* panel.
 4. **Select** cells, then drag them (or use the arrow keys) to move them. While something is selected, Brush and Erase
    only touch the selection; the *Selection* panel fills or erases it in one go.
 5. **Add** brings another file of the same mode into the current map, ready to move into place. Build departments or
    rooms one by one and put them together this way. A domain can't be added to a station, or the other way round.
 6. Domains: place at least one **Entry** and one **Qlippoth spot** marker, and choose how players are spread over
    the entries (*Random*, *Order* or *Cohort*). The *Checks* panel lists anything that is missing.
-7. **Save** downloads the file. **Open** takes either kind of file and switches to its mode.
+7. **Save** downloads the file. **Open** takes either kind of file and switches to its mode. It also opens the game's
+   own map files (`Resources/Maps/*.yml`) as stations.
 
 Press `?` in the editor for all shortcuts.
 
@@ -48,7 +51,7 @@ Press `?` in the editor for all shortcuts.
 |---|---|---|
 | 1 | Mode system (domain / station), per-mode autosave in IndexedDB | ✅ |
 | 2 | Palette v2: classification by component instead of folder, markers, fills, rotation metadata, game id renames | ✅ |
-| 3a | Import game map `.yml` files (fast line scanner), chunk-cached rendering | ⏳ |
+| 3a | Import game map `.yml` files (fast line scanner), several entities per cell, rotation display, chunk-cached rendering, Cell panel | ✅ |
 | 3b | Several entities per cell, rotation, game map `.yml` export (lossless round trip), *Draft* profile | ⏳ |
 | 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ⏳ |
 | 5 | *Exportable* profile: full station checks, `gameMap` prototype export | ⏳ |

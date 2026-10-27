@@ -1,9 +1,10 @@
 import "./style.css";
-import { LAYER_NAMES, clampSize, createDocument, deserialize, serialize, type MapDocument } from "./document";
+import { LAYER_NAMES, clampSize, createDocument, deserialize, itemsOf, serialize, type MapDocument } from "./document";
 import { ACTIONS, ACTION_INFO, Editor, SHAPES, SHAPE_INFO } from "./editor";
 import { clear, h } from "./dom";
 import { MODE_INFO, type ModeId } from "./modes";
 import { findItem, loadPalette, type Palette } from "./palette";
+import { importStation } from "./station/import";
 import { loadAutosaves, saveAutosave, saveLastMode, type Autosaves } from "./storage";
 import { buildPalettePanel, buildSidebar, buildTopBar } from "./ui";
 import { MapView, isTyping } from "./view";
@@ -54,24 +55,31 @@ function start(palette: Palette, autosaves: Autosaves): void {
     }
     const [x, y] = cell;
     const contents = editor.layers.map((layer) => {
-      const brush = editor.get(layer, x, y);
-      if (!brush) return null;
-      return `${LAYER_NAMES[layer]}: ${findItem(palette, layer, brush.id)?.name ?? brush.id}`;
+      const items = itemsOf(editor.get(layer, x, y));
+      if (items.length === 0) return null;
+      return `${LAYER_NAMES[layer]}: ${items.map((item) => findItem(palette, layer, item.id)?.name ?? item.id).join(", ")}`;
     }).filter(Boolean);
-    hoverText.textContent = `${x}, ${y}${contents.length ? "  ·  " + contents.join("  ·  ") : ""}`;
+    // Imported stations also show the game's grid coordinates of the tile.
+    const station = editor.doc.station;
+    const grid = station ? ` (grid ${x + station.originX}, ${y + station.originY})` : "";
+    hoverText.textContent = `${x}, ${y}${grid}${contents.length ? "  ·  " + contents.join("  ·  ") : ""}`;
   };
 
   const confirmDiscard = (mode: ModeId = editor.mode) =>
     !editor.isDirty(mode) || window.confirm(`You have unsaved changes in ${MODE_INFO[mode].name} mode. Discard them?`);
 
-  /** Lets the user pick a .json file and reads it as a map document. */
+  /** Reads an editor .json file, or a game map .yml as a station. */
+  const readDocument = (text: string, fileName: string): MapDocument =>
+    text.startsWith("meta:") ? importStation(text, palette, fileName.replace(/\.(ya?ml)$/i, "")) : deserialize(text);
+
+  /** Lets the user pick a file and reads it as a map document. */
   const pickDocument = (handle: (doc: MapDocument, file: File) => void) => {
-    const input = h("input", { type: "file", accept: ".json,application/json" });
+    const input = h("input", { type: "file", accept: ".json,.yml,.yaml,application/json" });
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) return;
       try {
-        handle(deserialize(await file.text()), file);
+        handle(readDocument(await file.text(), file.name), file);
       } catch (error) {
         window.alert(`Could not open ${file.name}: ${(error as Error).message}`);
       }
@@ -152,8 +160,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
   function showNewDialog() {
     const info = MODE_INFO[editor.mode];
     const name = h("input", { name: "name", value: info.defaultName, required: true });
-    const width = h("input", { name: "width", type: "number", value: String(info.defaultSize[0]), min: 1, max: 256, required: true });
-    const height = h("input", { name: "height", type: "number", value: String(info.defaultSize[1]), min: 1, max: 256, required: true });
+    const width = h("input", { name: "width", type: "number", value: String(info.defaultSize[0]), min: 1, max: info.maxSize, required: true });
+    const height = h("input", { name: "height", type: "number", value: String(info.defaultSize[1]), min: 1, max: info.maxSize, required: true });
     openDialog(
       `New ${info.name.toLowerCase()}`,
       h("label", { class: "field" }, h("span", {}, "Name"), name),
@@ -172,7 +180,9 @@ function start(palette: Palette, autosaves: Autosaves): void {
                 event.preventDefault();
                 return;
               }
-              editor.replaceDocument(createDocument(info.id, name.value.trim() || info.defaultName, clampSize(Number(width.value)), clampSize(Number(height.value))));
+              editor.replaceDocument(
+                createDocument(info.id, name.value.trim() || info.defaultName, clampSize(Number(width.value), info.maxSize), clampSize(Number(height.value), info.maxSize))
+              );
               view.fit();
             },
           },
@@ -188,7 +198,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
       ...ACTIONS.map((action): [string, string] => [ACTION_INFO[action].key, `${ACTION_INFO[action].name} action`]),
       ...SHAPES.map((shape): [string, string] => [SHAPE_INFO[shape].key, `${SHAPE_INFO[shape].name} shape`]),
       ...editor.layers.map((layer, index): [string, string] => [String(index + 1), `${LAYER_NAMES[layer]} layer`]),
-      ["Right click", "Pick item under cursor"],
+      ["Right click", "Pick item under cursor and show the cell"],
       ["Shift / Alt + click", "Add to / remove from the selection"],
       ["Drag selection / Arrows", "Move the selection (Shift + arrow: 10 cells)"],
       ["Enter / Esc", "Place moved content / cancel or deselect"],

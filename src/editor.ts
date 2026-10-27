@@ -4,12 +4,16 @@ import {
   cellKey,
   clampCohort,
   clampSize,
+  contentKey,
   entryRenumbering,
+  fromItems,
   inBounds,
+  itemsOf,
   parseKey,
   sameBrush,
   type Brush,
   type EntrySettings,
+  type Item,
   type LayerId,
   type MapDocument,
 } from "./document";
@@ -109,6 +113,8 @@ export class Editor {
   floating: Floating | null = null;
   /** Moving and erasing a selection takes every layer (true) or only the active one. */
   allLayers = true;
+  /** Cell shown in the Cell panel (set by right click). */
+  inspected: [number, number] | null = null;
   /** Increases on every edit; compared against the last saved value to know about unsaved work. */
   revision = 0;
   savedRevision = 0;
@@ -117,6 +123,8 @@ export class Editor {
   private redoStack: Change[][] = [];
   private stroke: Change[] | null = null;
   private parked: Partial<Record<ModeId, Session>> = {};
+  /** Cells changed since the view last asked, so it only redraws those parts of its cache. */
+  private changedCells = new Set<string>();
   private listeners = new Set<(topics: Set<Topic>) => void>();
   private queued = new Set<Topic>();
   private flushScheduled = false;
@@ -229,9 +237,20 @@ export class Editor {
     this.emit("selection", "view");
   }
 
-  selectedBrush(): Brush | null {
+  selectedBrush(): Item | null {
     const id = this.selected[this.activeLayer];
     return id ? { kind: "fixed", id } : null;
+  }
+
+  inspect(x: number, y: number): void {
+    this.inspected = inBounds(this.doc, x, y) ? [x, y] : null;
+    this.emit("area");
+  }
+
+  takeChangedCells(): Set<string> {
+    const changed = this.changedCells;
+    this.changedCells = new Set();
+    return changed;
   }
 
   // ---- Editing ---------------------------------------------------------------------------------
@@ -271,6 +290,13 @@ export class Editor {
     return this.get(layer, x, y);
   }
 
+  /** What a cell shows apart from floating content: the document, with lifted cells empty. */
+  underFloating(layer: LayerId, x: number, y: number): Brush | null {
+    const floating = this.floating;
+    if (floating?.source?.has(cellKey(x, y)) && floating.cells.has(layer)) return null;
+    return this.get(layer, x, y);
+  }
+
   /** Sets one cell, ignoring the selection. Must be called inside a stroke (or it opens a single-change stroke itself). */
   set(layer: LayerId, x: number, y: number, brush: Brush | null): void {
     if (!inBounds(this.doc, x, y)) return;
@@ -278,7 +304,7 @@ export class Editor {
     const before = this.doc.layers[layer].get(key) ?? null;
     if (sameBrush(before, brush)) return;
     // Painting an Entry over an Entry keeps the existing one and its place in the order.
-    if (brush?.id === ENTRY_ID && brush.order === undefined && before?.id === ENTRY_ID) return;
+    if (brush?.kind === "fixed" && brush.id === ENTRY_ID && brush.order === undefined && before?.kind === "fixed" && before.id === ENTRY_ID) return;
 
     const standalone = !this.stroke;
     if (standalone) this.beginStroke();
@@ -292,9 +318,24 @@ export class Editor {
     return !this.selection || this.selection.has(cellKey(x, y));
   }
 
-  /** Sets one cell as a user edit, respecting the selection. */
+  /** Whether cells of a layer hold stacks (station structure and object layers). */
+  stacks(layer: LayerId): boolean {
+    return MODE_INFO[this.mode].stacking.includes(layer);
+  }
+
+  /**
+   * Sets one cell as a user edit, respecting the selection. On stacking layers painting adds the item on top
+   * (unless the cell already holds that id) and erasing clears the cell's layer.
+   */
   paint(layer: LayerId, x: number, y: number, brush: Brush | null): void {
-    if (this.editable(x, y)) this.set(layer, x, y, brush);
+    if (!this.editable(x, y)) return;
+    if (brush && this.stacks(layer)) {
+      const items = itemsOf(this.get(layer, x, y));
+      const added = itemsOf(brush).filter((item) => !items.some((existing) => existing.id === item.id));
+      if (added.length === 0) return;
+      brush = fromItems([...items, ...added]);
+    }
+    this.set(layer, x, y, brush);
   }
 
   fillRect(layer: LayerId, x0: number, y0: number, x1: number, y1: number, brush: Brush | null): void {
@@ -309,20 +350,20 @@ export class Editor {
     if (sameBrush(this.get(layer, startX, startY), brush)) return;
     const region = this.region(layer, startX, startY, true);
     this.beginStroke();
-    for (const key of region) this.set(layer, ...parseKey(key), brush);
+    for (const key of region) this.paint(layer, ...parseKey(key), brush);
     this.endStroke();
   }
 
-  /** Cells connected to the start cell holding the same item on a layer (Entries match regardless of order). */
+  /** Cells connected to the start cell holding the same items on a layer (regardless of order or rotation). */
   private region(layer: LayerId, startX: number, startY: number, withinSelection: boolean): Set<string> {
-    const target = this.get(layer, startX, startY)?.id ?? null;
+    const target = contentKey(this.get(layer, startX, startY));
     const stack: [number, number][] = [[startX, startY]];
     const seen = new Set<string>();
     while (stack.length > 0) {
       const [x, y] = stack.pop()!;
       const key = cellKey(x, y);
       if (seen.has(key) || !inBounds(this.doc, x, y) || (withinSelection && !this.editable(x, y))) continue;
-      if ((this.get(layer, x, y)?.id ?? null) !== target) continue;
+      if (contentKey(this.get(layer, x, y)) !== target) continue;
       seen.add(key);
       stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
@@ -339,7 +380,8 @@ export class Editor {
 
   /** Resizes around the bottom-left origin; cells that fall outside are removed (and come back on undo). */
   resize(width: number, height: number): void {
-    const after: [number, number] = [clampSize(width), clampSize(height)];
+    const max = MODE_INFO[this.mode].maxSize;
+    const after: [number, number] = [clampSize(width, max), clampSize(height, max)];
     const before: [number, number] = [this.doc.width, this.doc.height];
     if (after[0] === before[0] && after[1] === before[1]) return;
 
@@ -426,6 +468,7 @@ export class Editor {
       case "cell":
         if (change.after) this.doc.layers[change.layer].set(change.key, change.after);
         else this.doc.layers[change.layer].delete(change.key);
+        this.changedCells.add(change.key);
         this.emit("cells");
         break;
       case "size":
@@ -500,7 +543,7 @@ export class Editor {
     const brush = this.selectedBrush();
     if (!this.selection || !brush) return;
     this.beginStroke();
-    for (const key of this.selection) this.set(this.activeLayer, ...parseKey(key), brush);
+    for (const key of this.selection) this.paint(this.activeLayer, ...parseKey(key), brush);
     this.endStroke();
   }
 
@@ -585,19 +628,21 @@ export class Editor {
 
   /**
    * Brings another file of the same mode in as floating content at (x, y), to be moved into place.
-   * Its entries keep their order but come after the existing ones.
+   * Its entries keep their order but come after the existing ones. Entities from another game map are placed as
+   * new entities of the same prototype and rotation: their uids and extra data belong to the other map.
    */
   addDocument(other: MapDocument, x: number, y: number): void {
     if (other.mode !== this.mode) {
       throw new Error(`A ${MODE_INFO[other.mode].name.toLowerCase()} can't be added to a ${MODE_INFO[this.mode].name.toLowerCase()}.`);
     }
     this.commitFloating();
-    const orderOffset = Math.max(0, ...[...this.doc.layers.marker.values()].map((brush) => brush.order ?? 0));
+    const orderOffset = Math.max(0, ...[...this.doc.layers.marker.values()].flatMap(itemsOf).map((item) => item.order ?? 0));
     const cells = new Map<LayerId, Map<string, Brush>>();
     for (const layer of this.layers) {
       const layerCells = new Map<string, Brush>();
       for (const [key, brush] of other.layers[layer]) {
-        layerCells.set(key, brush.order === undefined ? brush : { ...brush, order: brush.order + orderOffset });
+        const items = itemsOf(brush).map(({ uid, ...item }): Item => (item.order === undefined ? item : { ...item, order: item.order + orderOffset }));
+        layerCells.set(key, fromItems(items)!);
       }
       cells.set(layer, layerCells);
     }
@@ -612,8 +657,10 @@ export class Editor {
   // ---- Entries (domain) ------------------------------------------------------------------------
 
   /** Entry markers in order. */
-  entries(): [string, Brush][] {
-    return [...this.doc.layers.marker].filter(([, brush]) => brush.id === ENTRY_ID).sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0));
+  entries(): [string, Item][] {
+    return [...this.doc.layers.marker]
+      .filter((entry): entry is [string, Item] => entry[1].kind === "fixed" && entry[1].id === ENTRY_ID)
+      .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0));
   }
 
   setEntrySettings(settings: Partial<EntrySettings>): void {
@@ -648,7 +695,9 @@ export class Editor {
     // One warning per id and layer, pointing at its first cell.
     for (const layer of this.layers) {
       const firstSeen = new Map<string, [number, number]>();
-      for (const [key, brush] of this.doc.layers[layer]) if (!firstSeen.has(brush.id)) firstSeen.set(brush.id, parseKey(key));
+      for (const [key, brush] of this.doc.layers[layer]) {
+        for (const { id } of itemsOf(brush)) if (!firstSeen.has(id)) firstSeen.set(id, parseKey(key));
+      }
       for (const [id, at] of firstSeen) {
         const item = this.palette.byLayer[layer].get(id);
         if (item?.flags?.noMap) warnings.push({ message: `"${id}" is marked Do not map in the game.`, at });
@@ -665,7 +714,7 @@ export class Editor {
   /** Q-Gate rules: at least one entry, a Qlippoth spot, markers on walkable floor. */
   private validateDomain(warnings: Warning[]): void {
     const markers = this.doc.layers.marker;
-    const count = (id: string) => [...markers.values()].filter((brush) => brush.id === id).length;
+    const count = (id: string) => [...markers.values()].flatMap(itemsOf).filter((item) => item.id === id).length;
 
     if (count(ENTRY_ID) === 0) warnings.push({ message: "No Entry marker." });
     if (count("QlippothSpot") === 0) warnings.push({ message: "No Qlippoth spot marker." });
@@ -673,8 +722,8 @@ export class Editor {
     for (const [key] of markers) {
       const [x, y] = parseKey(key);
       if (!this.doc.layers.floor.has(key)) warnings.push({ message: "Marker without a floor tile.", at: [x, y] });
-      const structure = this.doc.layers.structure.get(key);
-      if (structure && this.palette.byLayer.structure.get(structure.id)?.category === "Structures/Walls") {
+      const structure = itemsOf(this.doc.layers.structure.get(key));
+      if (structure.some((item) => this.palette.byLayer.structure.get(item.id)?.category === "Structures/Walls")) {
         warnings.push({ message: "Marker inside a wall.", at: [x, y] });
       }
     }
