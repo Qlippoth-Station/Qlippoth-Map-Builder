@@ -415,6 +415,23 @@ button.warning:hover {
   color: var(--text-muted);
 }
 
+.selected-text .notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selected-text .notes li {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .palette-filters {
   display: flex;
   flex-direction: column;
@@ -478,11 +495,16 @@ button.warning:hover {
 }
 
 .icon.glyph,
+.icon.placeholder,
 .icon.unknown {
   display: grid;
   place-items: center;
   color: #fff;
   font-weight: 700;
+}
+
+.icon.placeholder {
+  background-color: rgba(140, 145, 160, 0.55);
 }
 
 .icon.unknown {
@@ -763,4 +785,336 @@ button.warning:hover {
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 11px;
+}
+
+/* ---- Cell panel -------------------------------------------------------------------------------- */
+
+.cell-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cell-panel[hidden] {
+  display: none;
+}
+
+.cell-panel h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cell-panel .close {
+  padding: 0 4px;
+}
+
+.cell-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.cell-items li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cell-item-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+
+.cell-item-name small {
+  color: var(--text-muted);
+}
+
+.cell-items .rot {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ---- Game server dialog ----------------------------------------------------------------------- */
+
+.game-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.game-folder p {
+  margin: 0;
+}
+
+.game-folder h3 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.commands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.command {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.command code {
+  padding: 3px 6px;
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.command .muted {
+  font-size: 12px;
+}
+
+.map-id {
+  width: 80px;
+}
+
+.folder-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.folder-files li {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.folder-files code {
+  overflow-wrap: anywhere;
+}
+
+.game-folder .status {
+  color: var(--ok);
+}
+
+@media (max-width: 640px) {
+  .command {
+    grid-template-columns: 1fr auto;
+  }
+
+  .command .muted {
+    grid-column: 1 / -1;
+  }
+}
+
+.commands .field.inline {
+  justify-content: flex-start;
+}
+
+.profile {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.profile[hidden] {
+  display: none;
+}
+
+/* ---- Right sidebar tabs and modules ------------------------------------------------------------ */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs button {
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+}
+
+.tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-body[hidden] {
+  display: none;
+}
+
+.panel-body.modules {
+  overflow-y: auto;
+}
+
+.panel-body.modules section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-body.modules p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.module-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.module-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.module-name {
+  display: flex;
+  flex-direction: column;
+}
+
+.module-name .muted {
+  font-size: 12px;
+}
+
+/* ---- Random tab -------------------------------------------------------------------------------- */
+
+.random li.active .module-name strong {
+  color: var(--accent);
+}
+
+.set-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+}
+
+.set-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.set-entries li {
+  display: flex;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.set-entries input {
+  width: 52px;
+}
+
+.set-resolve,
+.slot-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.set-resolve .field.inline {
+  justify-content: flex-start;
+}
+
+/* ---- Codebase dialog --------------------------------------------------------------------------- */
+
+.codebases {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 600px;
+}
+
+.codebases p,
+.codebases h3 {
+  margin: 0;
+}
+
+.codebases h3 {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.codebase-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.codebase-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.codebase-list li.active strong {
+  color: var(--accent);
+}
+
+.repo-link {
+  flex: 1;
+  min-width: 220px;
+}
+
+.codebases progress {
+  width: 100%;
+}
+
+.codebases progress[hidden] {
+  display: none;
+}
+
+.statusbar .commit {
+  padding: 0 4px;
+  font: inherit;
+  color: inherit;
 }

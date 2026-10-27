@@ -1,10 +1,15 @@
-import { ENTRY_ID, cellKey, inBounds, parseKey, type Brush, type LayerId } from "./document";
+import { ENTRY_ID, cellKey, inBounds, itemsOf, parseKey, type Brush, type Item, type LayerId } from "./document";
 import type { Editor, SelectOp } from "./editor";
-import { iconOrigin } from "./palette";
+import { findItem, iconOrigin } from "./palette";
 
 const BASE_CELL = 32;
-const MIN_ZOOM = 0.25;
+const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 4;
+/** Up to this many visible cells are drawn one by one; beyond it (zoomed out on big maps) chunks are cached. */
+const DIRECT_LIMIT = 6000;
+const CHUNK = 16;
+/** Pixels per cell in cached chunks. */
+const CACHE_CELL = 8;
 
 /** Canvas map view: rendering, camera (pan/zoom) and tool input. */
 export class MapView {
@@ -16,6 +21,10 @@ export class MapView {
   private dirty = true;
   private hover: [number, number] | null = null;
   private spaceHeld = false;
+  /** Rendered chunks for zoomed-out drawing, keyed "cx,cy"; dropped when their cells or the layer view change. */
+  private chunks = new Map<string, HTMLCanvasElement>();
+  private chunkSignature = "";
+  private chunkSource: Set<string> | null = null;
 
   private drag:
     | { kind: "pan"; startX: number; startY: number; originX: number; originY: number }
@@ -38,7 +47,16 @@ export class MapView {
 
     new ResizeObserver(() => this.resize()).observe(host);
     this.bindInput();
-    editor.subscribe(() => this.invalidate());
+    editor.subscribe((topics) => {
+      if (topics.has("document") || topics.has("mode")) this.chunks.clear();
+      if (topics.has("cells")) {
+        for (const key of editor.takeChangedCells()) {
+          const [x, y] = parseKey(key);
+          this.chunks.delete(`${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`);
+        }
+      }
+      this.invalidate();
+    });
 
     const frame = () => {
       if (this.dirty) this.draw();
@@ -130,13 +148,17 @@ export class MapView {
     const maxY = Math.min(doc.height - 1, doc.height - 1 - Math.floor(-this.offsetY / cell));
     const minY = Math.max(0, doc.height - 1 - Math.floor((viewHeight - this.offsetY) / cell));
 
-    for (const layer of editor.layers) {
-      if (!editor.visible[layer]) continue;
-      ctx.globalAlpha = editor.dimInactive && layer !== editor.activeLayer ? 0.3 : 1;
-      for (let y = minY; y <= maxY; y++) {
-        for (let x = minX; x <= maxX; x++) {
-          const brush = editor.displayed(layer, x, y);
-          if (brush) this.drawBrush(layer, brush, ...this.cellToScreen(x, y), cell);
+    if ((maxX - minX + 1) * (maxY - minY + 1) > DIRECT_LIMIT) {
+      this.drawChunks(minX, maxX, minY, maxY);
+    } else {
+      for (const layer of editor.layers) {
+        if (!editor.visible[layer]) continue;
+        ctx.globalAlpha = this.layerAlpha(layer);
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            const brush = editor.displayed(layer, x, y);
+            if (brush) this.drawBrush(ctx, layer, brush, ...this.cellToScreen(x, y), cell);
+          }
         }
       }
     }
@@ -166,14 +188,110 @@ export class MapView {
     this.drawOverlay(color("--accent"));
   }
 
-  private drawBrush(layer: LayerId, brush: Brush, sx: number, sy: number, size: number): void {
-    const { ctx } = this;
+  private layerAlpha(layer: LayerId): number {
+    return this.editor.dimInactive && layer !== this.editor.activeLayer ? 0.3 : 1;
+  }
+
+  /**
+   * Zoomed out on a big map: each 16x16 chunk is rendered once at 8 px per cell and reused until its cells change.
+   * Floating content is drawn on top every frame, since it moves.
+   */
+  private drawChunks(minX: number, maxX: number, minY: number, maxY: number): void {
+    const { ctx, editor } = this;
+    const signature = editor.layers.map((layer) => (editor.visible[layer] ? "1" : "0")).join("") + (editor.dimInactive ? editor.activeLayer : "");
+    const source = editor.floating?.source ?? null;
+    if (signature !== this.chunkSignature || source !== this.chunkSource) {
+      this.chunks.clear();
+      this.chunkSignature = signature;
+      this.chunkSource = source;
+    }
+    const cell = this.cellSize;
+    for (let cy = Math.floor(minY / CHUNK); cy <= Math.floor(maxY / CHUNK); cy++) {
+      for (let cx = Math.floor(minX / CHUNK); cx <= Math.floor(maxX / CHUNK); cx++) {
+        const key = `${cx},${cy}`;
+        let canvas = this.chunks.get(key);
+        if (!canvas) {
+          canvas = this.renderChunk(cx, cy);
+          this.chunks.set(key, canvas);
+        }
+        const [sx, sy] = this.cellToScreen(cx * CHUNK, cy * CHUNK + CHUNK - 1);
+        ctx.drawImage(canvas, sx, sy, CHUNK * cell, CHUNK * cell);
+      }
+    }
+    const floating = editor.floating;
+    if (!floating) return;
+    for (const [layer, cells] of floating.cells) {
+      if (!editor.visible[layer]) continue;
+      ctx.globalAlpha = this.layerAlpha(layer);
+      for (const [key, brush] of cells) {
+        const [rx, ry] = parseKey(key);
+        const [x, y] = [floating.x + rx, floating.y + ry];
+        if (x < minX || x > maxX || y < minY || y > maxY) continue;
+        this.drawBrush(ctx, layer, brush, ...this.cellToScreen(x, y), cell);
+      }
+    }
+  }
+
+  private renderChunk(cx: number, cy: number): HTMLCanvasElement {
+    const editor = this.editor;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = CHUNK * CACHE_CELL;
+    const target = canvas.getContext("2d")!;
+    target.imageSmoothingEnabled = false;
+    for (const layer of editor.layers) {
+      if (!editor.visible[layer]) continue;
+      target.globalAlpha = this.layerAlpha(layer);
+      for (let y = 0; y < CHUNK; y++) {
+        for (let x = 0; x < CHUNK; x++) {
+          const [gx, gy] = [cx * CHUNK + x, cy * CHUNK + y];
+          if (!inBounds(editor.doc, gx, gy)) continue;
+          const brush = editor.underFloating(layer, gx, gy);
+          if (brush) this.drawBrush(target, layer, brush, x * CACHE_CELL, (CHUNK - 1 - y) * CACHE_CELL, CACHE_CELL);
+        }
+      }
+    }
+    return canvas;
+  }
+
+  /** Draws every item of a cell, bottom first. */
+  private drawBrush(ctx: CanvasRenderingContext2D, layer: LayerId, brush: Brush, sx: number, sy: number, size: number): void {
+    for (const item of itemsOf(brush)) this.drawItem(ctx, layer, item, sx, sy, size);
+  }
+
+  private drawItem(ctx: CanvasRenderingContext2D, layer: LayerId, brush: Item, sx: number, sy: number, size: number): void {
     const palette = this.editor.palette;
-    const item = palette.byLayer[layer].get(brush.id);
+    if (brush.spawner) {
+      // A random spawner shows what it spawns first, with a die badge.
+      const first = brush.spawner.prototypes[0];
+      this.drawItem(ctx, layer, { kind: "fixed", id: first && findItem(palette, layer, first) ? first : brush.id, rot: brush.rot }, sx, sy, size);
+      if (size >= 12) {
+        const radius = Math.max(4, size * 0.16);
+        ctx.fillStyle = "#a871e0";
+        ctx.beginPath();
+        ctx.arc(sx + size - radius - 1, sy + radius + 1, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.font = `700 ${Math.round(radius * 1.5)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("?", sx + size - radius - 1, sy + radius + 2);
+      }
+      return;
+    }
+    const item = findItem(palette, layer, brush.id);
 
     if (item?.icon != null) {
       const [ax, ay] = iconOrigin(palette, item.icon);
-      ctx.drawImage(palette.atlas, ax, ay, palette.iconSize, palette.iconSize, sx, sy, size, size);
+      if (brush.rot) {
+        // Game rotation is counter-clockwise with y up; on screen (y down) that is a negative canvas rotation.
+        ctx.save();
+        ctx.translate(sx + size / 2, sy + size / 2);
+        ctx.rotate(-brush.rot);
+        ctx.drawImage(palette.atlas, ax, ay, palette.iconSize, palette.iconSize, -size / 2, -size / 2, size, size);
+        ctx.restore();
+      } else {
+        ctx.drawImage(palette.atlas, ax, ay, palette.iconSize, palette.iconSize, sx, sy, size, size);
+      }
       return;
     }
 
@@ -184,6 +302,7 @@ export class MapView {
       roundRect(ctx, sx + inset, sy + inset, size - inset * 2, size - inset * 2, size * 0.18);
       ctx.fill();
       ctx.globalAlpha /= 0.85;
+      if (size < 10) return;
       ctx.fillStyle = "#fff";
       ctx.font = `600 ${Math.max(8, size * 0.45)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
@@ -191,6 +310,21 @@ export class MapView {
       // Entries show their place in the order when the order matters.
       const ordered = brush.id === ENTRY_ID && brush.order !== undefined && this.editor.doc.entry.mode !== "random";
       ctx.fillText(ordered ? `${item.glyph}${brush.order}` : item.glyph, sx + size / 2, sy + size / 2 + 1, size - 2);
+      return;
+    }
+
+    if (item) {
+      // Known entity without a sprite: neutral tile with its initial.
+      const inset = size * 0.12;
+      ctx.fillStyle = "rgba(140, 145, 160, 0.55)";
+      roundRect(ctx, sx + inset, sy + inset, size - inset * 2, size - inset * 2, size * 0.18);
+      ctx.fill();
+      if (size < 10) return;
+      ctx.fillStyle = "#fff";
+      ctx.font = `600 ${Math.max(8, size * 0.4)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(item.name.charAt(0).toUpperCase(), sx + size / 2, sy + size / 2 + 1);
       return;
     }
 
@@ -210,6 +344,23 @@ export class MapView {
     const { ctx, editor } = this;
     const cell = this.cellSize;
     const danger = getComputedStyle(document.documentElement).getPropertyValue("--danger").trim() || "#e05555";
+
+    // Random room slots (stations): dashed frame with the slot's name.
+    for (const slot of editor.mode === "station" ? editor.roomSlots : []) {
+      const [sx, sy] = this.cellToScreen(slot.x, slot.y + slot.height - 1);
+      ctx.strokeStyle = "#a871e0";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 5]);
+      ctx.strokeRect(sx + 1, sy + 1, slot.width * cell - 2, slot.height * cell - 2);
+      ctx.setLineDash([]);
+      if (cell * slot.width >= 40) {
+        ctx.fillStyle = "#a871e0";
+        ctx.font = "600 12px system-ui, sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText(`${slot.name} · ${slot.modules.length} room(s)`, sx + 4, sy + 4, slot.width * cell - 8);
+      }
+    }
 
     if (editor.floating) {
       const { mask, x, y } = editor.floating;
@@ -243,7 +394,7 @@ export class MapView {
       const brush = editor.selectedBrush();
       if (brush && editor.action === "brush" && editor.editable(...this.hover)) {
         ctx.globalAlpha = 0.55;
-        this.drawBrush(editor.activeLayer, brush, sx, sy, cell);
+        this.drawBrush(ctx, editor.activeLayer, brush, sx, sy, cell);
         ctx.globalAlpha = 1;
       }
       ctx.strokeStyle = editor.action === "erase" ? danger : accent;
@@ -447,10 +598,11 @@ export class MapView {
     const editor = this.editor;
     if (!inBounds(editor.doc, x, y)) return;
     const order: LayerId[] = [editor.activeLayer, ...[...editor.layers].reverse().filter((layer) => layer !== editor.activeLayer)];
+    editor.inspect(x, y);
     for (const layer of order) {
-      const brush = editor.visible[layer] ? editor.get(layer, x, y) : null;
-      if (brush) {
-        editor.select(layer, brush.id);
+      const top = editor.visible[layer] ? itemsOf(editor.get(layer, x, y)).at(-1) : undefined;
+      if (top) {
+        editor.select(layer, top.id);
         return;
       }
     }

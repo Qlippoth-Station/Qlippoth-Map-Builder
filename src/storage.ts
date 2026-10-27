@@ -71,6 +71,20 @@ export async function saveAutosave(mode: ModeId, text: string): Promise<boolean>
   return (await run("readwrite", (store) => store.put(text, mode))) !== null;
 }
 
+/** Any structured-cloneable value under a key of its own (e.g. the linked game folder handle). */
+export async function loadValue<T>(key: string): Promise<T | null> {
+  return (await run("readonly", (store) => store.get(key))) as T | null;
+}
+
+/** Stores a value (null removes it). Resolves to false when the browser refused to store it. */
+export async function saveValue(key: string, value: unknown): Promise<boolean> {
+  if (value === null) {
+    await run<undefined>("readwrite", (store) => store.delete(key));
+    return true;
+  }
+  return (await run<IDBValidKey>("readwrite", (store) => store.put(value, key))) !== null;
+}
+
 export function saveLastMode(mode: ModeId): void {
   void run("readwrite", (store) => store.put(mode, LAST_MODE_KEY));
 }

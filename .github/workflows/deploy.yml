@@ -23,15 +23,19 @@ jobs:
       - uses: actions/checkout@v4
 
       # Game repository the palette is built from. Override with the GAME_REPOSITORY / GAME_REF repository variables.
+      # The station maps (top-level Resources/Maps/*.yml) are only read by the coverage check.
       - uses: actions/checkout@v4
         with:
           repository: ${{ vars.GAME_REPOSITORY || 'Qlippoth-Station/Qlippoth-station-14' }}
           ref: ${{ vars.GAME_REF || '' }}
           path: game
+          sparse-checkout-cone-mode: false
           sparse-checkout: |
-            Resources/Prototypes
-            Resources/Textures
-            Resources/Locale/en-US
+            /Resources/Prototypes/
+            /Resources/Textures/
+            /Resources/Locale/en-US/
+            /Resources/migration.yml
+            /Resources/Maps/*.yml
 
       - uses: actions/setup-node@v4
         with:
@@ -40,6 +44,12 @@ jobs:
 
       - run: npm ci
       - run: npm run palette -- --game game
+      # Other codebases listed in codebases.json, for the editor's Codebase dialog.
+      - run: node scripts/build-codebases.mjs
+      # Fails when the palette stops knowing the game's own station maps (e.g. a classification bug drops entities).
+      - run: npm run palette:coverage -- --game game --min 95
+      # Every station map must come back byte for byte through import + export, and edits must land correctly.
+      - run: npm run test:roundtrip -- --game game
       - run: npm run build
 
       - uses: actions/upload-pages-artifact@v3

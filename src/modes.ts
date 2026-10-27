@@ -12,6 +12,9 @@ export interface ModeInfo {
   title: string;
   /** Layers this mode edits, bottom to top. Shortcuts 1..n follow this order. */
   layers: readonly LayerId[];
+  /** Layers where a cell holds a stack of items (game maps put several entities on one tile). Other layers hold one. */
+  stacking: readonly LayerId[];
+  maxSize: number;
   defaultName: string;
   defaultSize: [number, number];
   fileSuffix: string;
@@ -24,6 +27,8 @@ export const MODE_INFO: Record<ModeId, ModeInfo> = {
     name: "Domain",
     title: "Domain Builder",
     layers: ["floor", "structure", "object", "marker"],
+    stacking: [],
+    maxSize: 256,
     defaultName: "Untitled domain",
     defaultSize: [20, 15],
     fileSuffix: ".domain.json",
@@ -34,9 +39,11 @@ export const MODE_INFO: Record<ModeId, ModeInfo> = {
     name: "Station",
     title: "Station Builder",
     layers: ["floor", "structure", "object"],
+    stacking: ["structure", "object"],
+    maxSize: 512,
     defaultName: "Untitled station",
     defaultSize: [64, 64],
-    fileSuffix: ".station.json",
+    fileSuffix: ".yml",
     hint: "Station maps and station parts",
   },
 };

@@ -5,10 +5,10 @@ The editor reads and writes two kinds of file. The `format` field decides which 
 | Mode | `format` | Current `version` | Extension | Layers |
 |---|---|---|---|---|
 | Domain | `qlippoth-domain` | 2 | `.domain.json` | `floor`, `structure`, `object`, `marker` |
-| Station | `qlippoth-station` | 1 | `.station.json` | `floor`, `structure`, `object` |
+| Station | `qlippoth-station` | 2 | `.station.json` | `floor`, `structure`, `object` |
 
-Both share the structure below. The station file is a working file for the editor; the game will get station maps
-as its own map `.yml` files once export lands (see the README roadmap).
+Stations are saved as the game's own map `.yml` files (see the README). The `.station.json` working file is still
+read: version 1 holds one item per layer like domains, version 2 adds stacks and rotation (below).
 
 ## Domain file
 
@@ -73,9 +73,16 @@ Only fixed brushes exist so far:
 Later versions will add set brushes with random modes (weak / default / full / chance) and roll scopes (cell / group / map).
 Readers must reject files whose `version` they do not know.
 
-## Station file
+## Station working file
 
-Same structure as a domain file, with `"format": "qlippoth-station"` and no `marker` layer:
+Same structure as a domain file, with `"format": "qlippoth-station"` and no `marker` layer. In version 2 a cell of
+the `structure` and `object` layers may hold a stack, and items may carry a rotation in radians (counter-clockwise,
+like the game):
+
+```json
+{ "kind": "stack", "items": [ { "kind": "fixed", "id": "Grille" }, { "kind": "fixed", "id": "WindowDirectional", "rot": 3.141592653589793 } ] }
+```
+
 
 ```json
 {
