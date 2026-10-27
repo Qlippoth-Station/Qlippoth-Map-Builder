@@ -71,6 +71,25 @@ export interface MapDocument {
   station?: StationSource;
   /** Stations: Draft runs the basic checks only; Exportable adds the checks a playable station needs. */
   profile?: StationProfile;
+  /** Modules placed in this map, so they can be updated to a newer version of the module later. */
+  instances?: ModuleInstance[];
+}
+
+/** A module (saved part of a map, e.g. a department) placed in a map. */
+export interface ModuleInstance {
+  /** Module id in the library. */
+  module: string;
+  name: string;
+  /** Bottom-left cell of the placed module. */
+  x: number;
+  y: number;
+  /** Size of the module before turning. */
+  width: number;
+  height: number;
+  /** Quarter turns clockwise. */
+  turns: number;
+  /** The module's `updated` time when it was placed or last updated here. */
+  version: number;
 }
 
 export type StationProfile = "draft" | "exportable";

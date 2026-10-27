@@ -2,6 +2,7 @@ import { ENTRY_MODES, LAYER_NAMES, MAX_COHORT, MIN_SIZE, itemsOf, parseKey, type
 import { ACTIONS, ACTION_INFO, SHAPES, SHAPE_INFO, type Editor, type Topic } from "./editor";
 import { clear, h } from "./dom";
 import { MODES, MODE_INFO, type ModeId } from "./modes";
+import type { ModuleLibrary, ModuleRecord } from "./modules";
 import { findItem, iconOrigin, itemNotes, type Palette, type PaletteItem } from "./palette";
 import type { MapView } from "./view";
 
@@ -445,7 +446,144 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
     if (topics.has("selection")) render();
   });
 
-  return h("aside", { class: "sidebar right" }, h("section", {}, title, selected), h("section", { class: "palette-filters" }, search, category), list, more);
+  return h("div", { class: "panel-body" }, h("section", {}, title, selected), h("section", { class: "palette-filters" }, search, category), list, more);
+}
+
+// ---- Right sidebar: palette and modules tabs --------------------------------------------------------
+
+export interface ModuleActions {
+  saveSelectionAsModule(): void;
+  importModule(): void;
+  placeModule(module: ModuleRecord): void;
+  updateModule(module: ModuleRecord): void;
+  exportModule(module: ModuleRecord): void;
+  deleteModule(module: ModuleRecord): void;
+  exportProject(): void;
+  openProject(): void;
+}
+
+export function buildRightSidebar(editor: Editor, library: ModuleLibrary, view: MapView, actions: ModuleActions): HTMLElement {
+  const palettePanel = buildPalettePanel(editor);
+  const modulesPanel = buildModulesPanel(editor, library, view, actions);
+  const tabs = h("div", { class: "tabs", role: "tablist" });
+  let shown: "palette" | "modules" = "palette";
+  const render = () => {
+    palettePanel.hidden = shown !== "palette";
+    modulesPanel.hidden = shown !== "modules";
+    clear(
+      tabs,
+      ...(["palette", "modules"] as const).map((tab) =>
+        h(
+          "button",
+          { role: "tab", class: shown === tab ? "active" : "", "aria-selected": String(shown === tab), onclick: () => ((shown = tab), render()) },
+          tab === "palette" ? "Palette" : `Modules · ${library.forMode(editor.mode).length}`
+        )
+      )
+    );
+  };
+  render();
+  library.subscribe(render);
+  editor.subscribe((topics) => {
+    if (topics.has("mode")) render();
+  });
+  return h("aside", { class: "sidebar right" }, tabs, palettePanel, modulesPanel);
+}
+
+function buildModulesPanel(editor: Editor, library: ModuleLibrary, view: MapView, actions: ModuleActions): HTMLElement {
+  const panel = h("div", { class: "panel-body modules" });
+  const render = () => {
+    const modules = library.forMode(editor.mode);
+    const instances = editor.instances;
+    const hasSelection = !!editor.selection || !!editor.floating;
+    const kind = editor.mode === "station" ? "departments or rooms" : "rooms";
+    clear(
+      panel,
+      h(
+        "section",
+        {},
+        h("p", { class: "muted" }, `Save parts of the map (${kind}) as modules, place them in other maps and update every placed copy when the module changes.`),
+        h(
+          "div",
+          { class: "button-row" },
+          h("button", { class: "primary", disabled: !hasSelection, title: hasSelection ? "Save the selection as a module" : "Select cells first (Select action)", onclick: () => actions.saveSelectionAsModule() }, "Save selection"),
+          h("button", { class: "secondary", title: "Add a map file to the library as a module", onclick: () => actions.importModule() }, "Import…")
+        ),
+        h(
+          "div",
+          { class: "button-row" },
+          h("button", { class: "secondary", title: "This map, its modules and their placements in one .zip", onclick: () => actions.exportProject() }, "Save project"),
+          h("button", { class: "secondary", title: "Open a project .zip", onclick: () => actions.openProject() }, "Open project…")
+        )
+      ),
+      h(
+        "section",
+        { class: "module-list" },
+        h("h2", {}, `Library · ${modules.length}`),
+        modules.length
+          ? h(
+              "ul",
+              {},
+              ...modules.map((module) => {
+                const placed = instances.filter((instance) => instance.module === module.id);
+                const outdated = placed.filter((instance) => instance.version !== module.updated).length;
+                return h(
+                  "li",
+                  {},
+                  h("div", { class: "module-name" }, h("strong", {}, module.name), h("span", { class: "muted" }, `${module.width}×${module.height} · placed ${placed.length}×`)),
+                  h(
+                    "div",
+                    { class: "button-row" },
+                    h("button", { class: "secondary", title: "Place it in the map (move, T to turn, Enter to place)", onclick: () => actions.placeModule(module) }, "Place"),
+                    outdated
+                      ? h("button", { class: "primary", title: "Replace placed copies with this version", onclick: () => actions.updateModule(module) }, `Update ${outdated}`)
+                      : null,
+                    h("button", { class: "ghost", title: "Download the module file", onclick: () => actions.exportModule(module) }, "Export"),
+                    h("button", { class: "ghost", title: "Remove from the library", "aria-label": `Remove ${module.name}`, onclick: () => actions.deleteModule(module) }, "✕")
+                  )
+                );
+              })
+            )
+          : h("p", { class: "muted" }, "No modules yet.")
+      ),
+      h(
+        "section",
+        { class: "module-list" },
+        h("h2", {}, `Placed in this map · ${instances.length}`),
+        instances.length
+          ? h(
+              "ul",
+              {},
+              ...instances.map((instance, index) => {
+                const module = library.get(instance.module);
+                const state = !module ? "not in the library" : module.updated !== instance.version ? "older version" : "up to date";
+                return h(
+                  "li",
+                  {},
+                  h(
+                    "div",
+                    { class: "module-name" },
+                    h("strong", {}, module?.name ?? instance.name),
+                    h("span", { class: "muted" }, `at ${instance.x}, ${instance.y}${instance.turns ? ` · turned ${instance.turns * 90}°` : ""} · ${state}`)
+                  ),
+                  h(
+                    "div",
+                    { class: "button-row" },
+                    h("button", { class: "ghost", onclick: () => view.focus(instance.x, instance.y) }, "Show"),
+                    h("button", { class: "ghost", title: "Stop tracking it (the cells stay)", onclick: () => editor.forgetInstance(index) }, "Forget")
+                  )
+                );
+              })
+            )
+          : h("p", { class: "muted" }, "Placed modules are listed here.")
+      )
+    );
+  };
+  render();
+  library.subscribe(render);
+  editor.subscribe((topics) => {
+    if (topics.has("document") || topics.has("mode") || topics.has("area")) render();
+  });
+  return panel;
 }
 
 // ---- Top bar ---------------------------------------------------------------------------------------

@@ -67,3 +67,41 @@ export function createZip(files: { path: string; text: string }[]): Blob {
   end.setUint32(16, offset, true);
   return new Blob([...parts, ...central, new Uint8Array(end.buffer)] as BlobPart[], { type: "application/zip" });
 }
+
+/** Reads a .zip (stored or deflated entries) into its files as text. */
+export async function readZip(data: ArrayBuffer): Promise<{ path: string; text: string }[]> {
+  const view = new DataView(data);
+  const bytes = new Uint8Array(data);
+  let end = -1;
+  for (let i = data.byteLength - 22; i >= Math.max(0, data.byteLength - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) throw new Error("Not a .zip file.");
+  const count = view.getUint16(end + 10, true);
+  let offset = view.getUint32(end + 16, true);
+  const decoder = new TextDecoder();
+  const files: { path: string; text: string }[] = [];
+  for (let n = 0; n < count; n++) {
+    if (view.getUint32(offset, true) !== 0x02014b50) throw new Error("Damaged .zip file.");
+    const method = view.getUint16(offset + 10, true);
+    const size = view.getUint32(offset + 20, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const local = view.getUint32(offset + 42, true);
+    const path = decoder.decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
+    offset += 46 + nameLength + extraLength + commentLength;
+    if (path.endsWith("/")) continue;
+    const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+    const raw = bytes.subarray(start, start + size);
+    let content: Uint8Array;
+    if (method === 0) content = raw;
+    else if (method === 8) content = new Uint8Array(await new Response(new Blob([raw as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+    else throw new Error(`${path}: unsupported compression.`);
+    files.push({ path, text: decoder.decode(content) });
+  }
+  return files;
+}

@@ -43,6 +43,22 @@ links and other component data) is kept and written back. Edits change only what
 - when tiles change, the grid's chunks and atmosphere are rewritten: existing tiles keep their gas mixture, new tiles
   get standard air, so the station does not open as vacuum.
 
+### Modules and projects
+
+The **Modules** tab next to the palette keeps a library of map parts per mode (stored in the browser):
+
+- **Save selection** stores the selected cells as a module (a station module is a normal game map `.yml`, so it can be
+  exported and tested in the game on its own; a domain module is a `.domain.json`). Saving under an existing name
+  makes a new version.
+- **Place** brings a module in like Add: move it, turn it with **T**, place it with **Enter**. The map remembers
+  where each module was placed and how it was turned.
+- When a module has a newer version, **Update** replaces every placed copy (its footprint is cleared on all layers
+  and the new version is written, turned as before), as one undo step.
+- Station checks look at where placed modules meet the rest: doors on a module's edge that open into a wall or space,
+  and edge floor open to space.
+- **Save project** downloads a `.project.zip` with `project.yml` (map, modules, placements), the map and every module
+  of the mode; **Open project** reads it back (modules join the library as new versions).
+
 ### Draft and Exportable
 
 Stations have two profiles, switched above the *Checks* list:
@@ -97,7 +113,7 @@ Press `?` in the editor for all shortcuts.
 | 3b | Editing stations: turning (T), Cell panel turn/remove, turning selections; game map `.yml` export with a lossless round trip | ✅ |
 | 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ✅ |
 | 5 | *Draft* / *Exportable* profiles, station checks, export package with the `gameMap` prototype | ✅ |
-| 6 | Modules (departments) and project files | ⏳ |
+| 6 | Module library (departments, rooms), placed instances with updates, edge checks, project files | ✅ |
 | 7 | Random spawners and `RoomFill` rooms | ⏳ |
 | 8 | Codebase picker for other SS14 forks | ⏳ |
 
@@ -138,6 +154,8 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | `src/document.ts` | Document model and file formats |
 | `src/storage.ts` | Autosave (IndexedDB, one slot per mode) |
 | `src/station/` | Game map reader (`mapfile.ts`), import, export, new-station template, station autosave |
+| `src/modules.ts`, `src/project.ts` | Module library and project files |
+| `src/gamefolder.ts` | Linked game server data folder |
 | `scripts/station-roundtrip.ts` | Round-trip test of station import/export against the game's maps |
 | `src/editor.ts` | Editor state, edits, undo/redo, checks |
 | `src/view.ts` | Canvas rendering, camera and tool input |

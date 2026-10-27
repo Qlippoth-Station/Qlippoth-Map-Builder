@@ -64,3 +64,47 @@ export function exportableChecks(doc: MapDocument, palette: Palette): StationWar
   }
   return warnings;
 }
+
+/**
+ * Where placed modules meet the rest of the station: a door on the module's edge that opens into a wall or space,
+ * and floor on the edge that is open to space (no wall or window on it and no tile outside).
+ */
+export function moduleEdgeChecks(doc: MapDocument, palette: Palette): StationWarning[] {
+  const warnings: StationWarning[] = [];
+  const category = (key: string, prefix: string) =>
+    itemsOf(doc.layers.structure.get(key)).some((item) => findItem(palette, "structure", item.id)?.category.startsWith(prefix));
+  const blocked = (key: string) => category(key, "Structures/Walls") || category(key, "Structures/Windows");
+
+  for (const instance of doc.instances ?? []) {
+    const [w, h] = instance.turns % 2 ? [instance.height, instance.width] : [instance.width, instance.height];
+    let badDoors = 0;
+    let openEdges = 0;
+    let firstDoor: [number, number] | undefined;
+    let firstOpen: [number, number] | undefined;
+    for (let y = instance.y; y < instance.y + h; y++) {
+      for (let x = instance.x; x < instance.x + w; x++) {
+        const outside: [number, number][] = [];
+        if (x === instance.x) outside.push([x - 1, y]);
+        if (x === instance.x + w - 1) outside.push([x + 1, y]);
+        if (y === instance.y) outside.push([x, y - 1]);
+        if (y === instance.y + h - 1) outside.push([x, y + 1]);
+        const key = `${x},${y}`;
+        for (const [ox, oy] of outside) {
+          if (ox < 0 || oy < 0 || ox >= doc.width || oy >= doc.height) continue;
+          const outsideKey = `${ox},${oy}`;
+          const outsideFloor = doc.layers.floor.has(outsideKey);
+          if (category(key, "Structures/Doors") && (!outsideFloor || blocked(outsideKey))) {
+            badDoors++;
+            firstDoor ??= [x, y];
+          } else if (doc.layers.floor.has(key) && !blocked(key) && !category(key, "Structures/Doors") && !outsideFloor) {
+            openEdges++;
+            firstOpen ??= [x, y];
+          }
+        }
+      }
+    }
+    if (badDoors) warnings.push({ message: `Module "${instance.name}": ${badDoors} door(s) on its edge open into a wall or space.`, at: firstDoor });
+    if (openEdges) warnings.push({ message: `Module "${instance.name}": ${openEdges} edge tile(s) are open to space.`, at: firstOpen });
+  }
+  return warnings;
+}

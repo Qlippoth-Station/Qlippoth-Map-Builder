@@ -4,6 +4,7 @@ import {
   cellKey,
   clampCohort,
   clampSize,
+  createDocument,
   contentKey,
   entryRenumbering,
   fromItems,
@@ -18,11 +19,12 @@ import {
   type Item,
   type LayerId,
   type MapDocument,
+  type ModuleInstance,
   type StationProfile,
 } from "./document";
 import { MODE_INFO, type ModeId } from "./modes";
 import { findItem, type Palette } from "./palette";
-import { exportableChecks } from "./station/checks";
+import { exportableChecks, moduleEdgeChecks } from "./station/checks";
 
 /** What a click does. */
 export const ACTIONS = ["brush", "erase", "select"] as const;
@@ -53,7 +55,8 @@ type Change =
   | { type: "cell"; layer: LayerId; key: string; before: Brush | null; after: Brush | null }
   | { type: "size"; before: [number, number]; after: [number, number] }
   | { type: "name"; before: string; after: string }
-  | { type: "entry"; before: EntrySettings; after: EntrySettings };
+  | { type: "entry"; before: EntrySettings; after: EntrySettings }
+  | { type: "instances"; before: ModuleInstance[]; after: ModuleInstance[] };
 
 export interface Warning {
   message: string;
@@ -76,6 +79,36 @@ export interface Floating {
   fromY: number;
   /** Cells the content was lifted from (absolute keys), cleared when it is placed. Null for added files. */
   source: Set<string> | null;
+  /** Set when the content is a module from the library: placing it records an instance. */
+  module?: { id: string; name: string; version: number; width: number; height: number };
+  /** Quarter turns clockwise since it was picked up or added. */
+  turns: number;
+}
+
+/** Turns cells and their outline a quarter (1 = clockwise, -1 = counter-clockwise); entities on stacking layers turn too. */
+function turnContent(
+  cells: Map<LayerId, Map<string, Brush>>,
+  mask: Set<string>,
+  direction: 1 | -1,
+  stacks: (layer: LayerId) => boolean
+): { cells: Map<LayerId, Map<string, Brush>>; mask: Set<string>; width: number; height: number } {
+  const points = [...mask].map(parseKey);
+  const width = Math.max(...points.map(([x]) => x)) + 1;
+  const height = Math.max(...points.map(([, y]) => y)) + 1;
+  const turn = (key: string): string => {
+    const [x, y] = parseKey(key);
+    return direction === 1 ? cellKey(y, width - 1 - x) : cellKey(height - 1 - y, x);
+  };
+  const turned = new Map<LayerId, Map<string, Brush>>();
+  for (const [layer, layerCells] of cells) {
+    const out = new Map<string, Brush>();
+    for (const [key, brush] of layerCells) {
+      const items = stacks(layer) ? itemsOf(brush).map((item) => withRotation(item, (item.rot ?? 0) - direction * QUARTER_TURN)) : itemsOf(brush);
+      out.set(turn(key), fromItems(items)!);
+    }
+    turned.set(layer, out);
+  }
+  return { cells: turned, mask: new Set([...mask].map(turn)), width, height };
 }
 
 /** Everything that belongs to one mode's document; the mode being left is parked in this form. */
@@ -498,6 +531,10 @@ export class Editor {
         this.doc.entry = change.after;
         this.emit("document");
         break;
+      case "instances":
+        this.doc.instances = change.after;
+        this.emit("document");
+        break;
     }
   }
 
@@ -596,7 +633,7 @@ export class Editor {
       cells.set(layer, layerCells);
     }
     const mask = new Set(points.map(([px, py]) => cellKey(px - x, py - y)));
-    this.floating = { cells, mask, x, y, fromX: x, fromY: y, source: new Set(this.selection) };
+    this.floating = { cells, mask, x, y, fromX: x, fromY: y, source: new Set(this.selection), turns: 0 };
     this.emit("area", "cells", "history");
     return true;
   }
@@ -621,24 +658,10 @@ export class Editor {
   rotateSelection(direction: 1 | -1): void {
     if (!this.liftSelection()) return;
     const floating = this.floating!;
-    const points = [...floating.mask].map(parseKey);
-    const width = Math.max(...points.map(([x]) => x)) + 1;
-    const height = Math.max(...points.map(([, y]) => y)) + 1;
-    const turn = (key: string): string => {
-      const [x, y] = parseKey(key);
-      return direction === 1 ? cellKey(y, width - 1 - x) : cellKey(height - 1 - y, x);
-    };
-    const cells = new Map<LayerId, Map<string, Brush>>();
-    for (const [layer, layerCells] of floating.cells) {
-      const turned = new Map<string, Brush>();
-      for (const [key, brush] of layerCells) {
-        const items = this.stacks(layer) ? itemsOf(brush).map((item) => withRotation(item, (item.rot ?? 0) - direction * QUARTER_TURN)) : itemsOf(brush);
-        turned.set(turn(key), fromItems(items)!);
-      }
-      cells.set(layer, turned);
-    }
+    const { cells, mask, width, height } = turnContent(floating.cells, floating.mask, direction, (layer) => this.stacks(layer));
     floating.cells = cells;
-    floating.mask = new Set([...floating.mask].map(turn));
+    floating.mask = mask;
+    floating.turns = (floating.turns + (direction === 1 ? 1 : 3)) % 4;
     // Turn around the middle (two turns back undo it exactly), but stay inside the map when it fits.
     floating.x += Math.trunc((width - height) / 2);
     floating.y += Math.trunc((height - width) / 2);
@@ -673,6 +696,11 @@ export class Editor {
         this.set(layer, floating.x + rx, floating.y + ry, brush);
       }
     }
+    if (floating.module) {
+      const { id, name, version, width, height } = floating.module;
+      const instance: ModuleInstance = { module: id, name, x: floating.x, y: floating.y, width, height, turns: floating.turns, version };
+      this.record({ type: "instances", before: this.instances, after: [...this.instances, instance] });
+    }
     this.endStroke();
     const placed = [...floating.mask].map((key) => {
       const [rx, ry] = parseKey(key);
@@ -696,7 +724,7 @@ export class Editor {
    * Its entries keep their order but come after the existing ones. Entities from another game map are placed as
    * new entities of the same prototype and rotation: their uids and extra data belong to the other map.
    */
-  addDocument(other: MapDocument, x: number, y: number): void {
+  addDocument(other: MapDocument, x: number, y: number, module?: Floating["module"]): void {
     if (other.mode !== this.mode) {
       throw new Error(`A ${MODE_INFO[other.mode].name.toLowerCase()} can't be added to a ${MODE_INFO[this.mode].name.toLowerCase()}.`);
     }
@@ -714,9 +742,77 @@ export class Editor {
     const mask = new Set<string>();
     for (let ry = 0; ry < other.height; ry++) for (let rx = 0; rx < other.width; rx++) mask.add(cellKey(rx, ry));
     this.selection = null;
-    this.floating = { cells, mask, x, y, fromX: x, fromY: y, source: null };
+    this.floating = { cells, mask, x, y, fromX: x, fromY: y, source: null, turns: 0, module };
     this.action = "select";
     this.emit("area", "cells", "selection", "history");
+  }
+
+  // ---- Modules ---------------------------------------------------------------------------------
+
+  get instances(): ModuleInstance[] {
+    return this.doc.instances ?? [];
+  }
+
+  /** The selected cells (or what is being moved) as a document of their own, for saving as a module. */
+  selectionDocument(name: string): MapDocument | null {
+    const floating = this.floating;
+    const keys = floating ? [...floating.mask].map((key) => { const [x, y] = parseKey(key); return cellKey(x + floating.x, y + floating.y); }) : [...(this.selection ?? [])];
+    if (keys.length === 0) return null;
+    const points = keys.map(parseKey);
+    const [minX, minY] = [Math.min(...points.map(([x]) => x)), Math.min(...points.map(([, y]) => y))];
+    const [maxX, maxY] = [Math.max(...points.map(([x]) => x)), Math.max(...points.map(([, y]) => y))];
+    const doc = createDocument(this.mode, name, maxX - minX + 1, maxY - minY + 1);
+    doc.entry = { ...this.doc.entry };
+    for (const layer of this.layers) {
+      for (const [x, y] of points) {
+        const brush = this.displayed(layer, x, y);
+        // Entities become new ones in the module: uids belong to this map.
+        if (brush) doc.layers[layer].set(cellKey(x - minX, y - minY), fromItems(itemsOf(brush).map(({ uid, ...item }) => item))!);
+      }
+    }
+    return doc;
+  }
+
+  /**
+   * Replaces every placed instance of a module with a new version: its footprint is cleared on all layers and the
+   * module's content is written there again, turned as it was placed. One undo step.
+   */
+  updateInstances(moduleId: string, module: MapDocument, version: number): number {
+    this.commitFloating();
+    const targets = this.instances.filter((instance) => instance.module === moduleId && instance.version !== version);
+    if (targets.length === 0) return 0;
+    this.beginStroke();
+    for (const instance of targets) {
+      const turnedOld = instance.turns % 2 === 1;
+      const [oldW, oldH] = turnedOld ? [instance.height, instance.width] : [instance.width, instance.height];
+      for (const layer of this.layers) for (const key of this.rectKeys(instance.x, instance.y, instance.x + oldW - 1, instance.y + oldH - 1)) this.set(layer, ...parseKey(key), null);
+
+      let cells = new Map<LayerId, Map<string, Brush>>(this.layers.map((layer) => [layer, new Map(module.layers[layer])]));
+      let mask = new Set<string>();
+      for (let y = 0; y < module.height; y++) for (let x = 0; x < module.width; x++) mask.add(cellKey(x, y));
+      for (let turn = 0; turn < instance.turns; turn++) ({ cells, mask } = turnContent(cells, mask, 1, (layer) => this.stacks(layer)));
+      for (const [layer, layerCells] of cells) {
+        for (const [key, brush] of layerCells) {
+          const [x, y] = parseKey(key);
+          this.set(layer, instance.x + x, instance.y + y, fromItems(itemsOf(brush).map(({ uid, ...item }) => item)));
+        }
+      }
+    }
+    const after = this.instances.map((instance) =>
+      targets.includes(instance) ? { ...instance, width: module.width, height: module.height, version } : instance
+    );
+    this.record({ type: "instances", before: this.instances, after });
+    this.endStroke();
+    return targets.length;
+  }
+
+  /** Stops tracking a placed module (its cells stay). */
+  forgetInstance(index: number): void {
+    const before = this.instances;
+    if (!before[index]) return;
+    this.beginStroke();
+    this.record({ type: "instances", before, after: before.filter((_, i) => i !== index) });
+    this.endStroke();
   }
 
   // ---- Entries (domain) ------------------------------------------------------------------------
@@ -766,6 +862,7 @@ export class Editor {
     const warnings: Warning[] = [];
     if (this.mode === "domain") this.validateDomain(warnings);
     if (this.mode === "station" && this.profile === "exportable") warnings.push(...exportableChecks(this.doc, this.palette));
+    if (this.mode === "station") warnings.push(...moduleEdgeChecks(this.doc, this.palette));
 
     // One warning per id and layer, pointing at its first cell.
     for (const layer of this.layers) {
@@ -812,6 +909,7 @@ function invert(change: Change): Change {
     case "size":
     case "name":
     case "entry":
+    case "instances":
       return { ...change, before: change.after, after: change.before } as Change;
   }
 }

@@ -5,12 +5,14 @@ import { clear, h } from "./dom";
 import { MODE_INFO, type ModeId } from "./modes";
 import { GameFolder, type FolderFile } from "./gamefolder";
 import { findItem, loadPalette, type Palette } from "./palette";
-import { readStationAutosave, stationAutosave } from "./station/autosave";
+import { autosaveText, readAutosave } from "./autosave";
 import { exportStation } from "./station/export";
 import { exportPackage } from "./station/gamemap";
 import { importStation } from "./station/import";
 import { loadAutosaves, saveAutosave, saveLastMode, type Autosaves } from "./storage";
-import { buildPalettePanel, buildSidebar, buildTopBar } from "./ui";
+import { ModuleLibrary, type ModuleRecord } from "./modules";
+import { exportProject, openProject, slug } from "./project";
+import { buildRightSidebar, buildSidebar, buildTopBar } from "./ui";
 import { MapView, isTyping } from "./view";
 
 const app = document.getElementById("app")!;
@@ -32,7 +34,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
     const saved = autosaves.documents[mode];
     if (saved) {
       try {
-        const doc = readStationAutosave(saved, palette) ?? deserialize(saved);
+        const doc = readAutosave(saved, palette);
         if (doc.mode === mode) return doc;
       } catch {
         // Start fresh.
@@ -45,6 +47,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
   const editor = new Editor(palette, documentFor(autosaves.lastMode ?? "domain"));
   const gameFolder = new GameFolder();
   void gameFolder.restore();
+  const library = new ModuleLibrary();
+  void library.load();
   const stage = h("section", { class: "stage" });
   const status = h("footer", { class: "statusbar" });
   const dialog = h("dialog", { class: "dialog" });
@@ -83,6 +87,16 @@ function start(palette: Palette, autosaves: Autosaves): void {
   /** Reads an editor .json file, or a game map .yml as a station. */
   const readDocument = (text: string, fileName: string): MapDocument =>
     text.startsWith("meta:") ? importStation(text, palette, fileName.replace(/\.(ya?ml)$/i, "")) : deserialize(text);
+
+  /**
+   * A library module as a document. Station modules saved from a selection were written into a new-station map,
+   * which centres them on the grid; reading them with that layout keeps empty rows and columns at their edges.
+   */
+  const readModule = (module: ModuleRecord): MapDocument => {
+    if (module.mode !== "station") return deserialize(module.text);
+    const layout = { originX: -Math.floor(module.width / 2), originY: -Math.floor(module.height / 2), width: module.width, height: module.height };
+    return importStation(module.text, palette, module.name, layout);
+  };
 
   /** Lets the user pick a file and reads it as a map document. */
   const pickDocument = (handle: (doc: MapDocument, file: File) => void) => {
@@ -123,7 +137,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
       pickDocument((doc, file) => actions.addDocument(doc, file.name));
     },
     /** Brings a document of the same mode in as floating content, centred in the view (offering to grow the map). */
-    addDocument(doc: MapDocument, label: string) {
+    addDocument(doc: MapDocument, label: string, module?: ModuleRecord) {
       const target = MODE_INFO[editor.mode].name.toLowerCase();
       if (doc.mode !== editor.mode) {
         window.alert(`${label} is a ${MODE_INFO[doc.mode].name.toLowerCase()} file. Only ${target} files can be added to a ${target}.`);
@@ -140,7 +154,75 @@ function start(palette: Palette, autosaves: Autosaves): void {
       }
       const [cx, cy] = view.centerCell();
       const place = (center: number, size: number, room: number) => Math.max(0, Math.min(room - size, center - Math.floor(size / 2)));
-      editor.addDocument(doc, place(cx, doc.width, editor.doc.width), place(cy, doc.height, editor.doc.height));
+      const info = module && { id: module.id, name: module.name, version: module.updated, width: doc.width, height: doc.height };
+      editor.addDocument(doc, place(cx, doc.width, editor.doc.width), place(cy, doc.height, editor.doc.height), info);
+    },
+
+    // ---- Modules and projects ----
+    saveSelectionAsModule() {
+      const suggested = `Module ${library.forMode(editor.mode).length + 1}`;
+      const name = window.prompt("Module name (a module with the same name gets a new version):", suggested)?.trim();
+      if (!name) return;
+      const doc = editor.selectionDocument(name);
+      if (!doc) return;
+      try {
+        const text = doc.mode === "station" ? exportStation(doc, palette).text : serialize(doc);
+        library.put({ name, mode: doc.mode, width: doc.width, height: doc.height, text });
+      } catch (error) {
+        window.alert(`Could not save the module: ${(error as Error).message}`);
+      }
+    },
+    importModule() {
+      pickDocument((doc, file) => {
+        const name = file.name.replace(/\.(ya?ml|json)$/i, "").replace(/\.domain$/, "");
+        const text = doc.mode === "station" ? exportStation(doc, palette).text : serialize(doc);
+        library.put({ name, mode: doc.mode, width: doc.width, height: doc.height, text });
+      });
+    },
+    placeModule(module: ModuleRecord) {
+      try {
+        actions.addDocument(readModule(module), module.name, module);
+      } catch (error) {
+        window.alert(`Could not place ${module.name}: ${(error as Error).message}`);
+      }
+    },
+    updateModule(module: ModuleRecord) {
+      try {
+        editor.updateInstances(module.id, readModule(module), module.updated);
+      } catch (error) {
+        window.alert(`Could not update ${module.name}: ${(error as Error).message}`);
+      }
+    },
+    exportModule(module: ModuleRecord) {
+      download(new Blob([module.text], { type: "text/plain" }), `${slug(module.name)}${MODE_INFO[module.mode].fileSuffix}`);
+    },
+    deleteModule(module: ModuleRecord) {
+      if (window.confirm(`Remove ${module.name} from the library? Placed copies stay in the maps.`)) library.remove(module.id);
+    },
+    exportProject() {
+      editor.commitFloating();
+      try {
+        download(exportProject(editor.doc, palette, library), `${slug(editor.doc.name)}.project.zip`);
+      } catch (error) {
+        window.alert(`Could not save the project: ${(error as Error).message}`);
+      }
+    },
+    openProject() {
+      const input = h("input", { type: "file", accept: ".zip,application/zip" });
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          const { doc } = await openProject(await file.arrayBuffer(), palette, library);
+          if (!confirmDiscard(doc.mode)) return;
+          editor.replaceDocument(doc);
+          saveLastMode(doc.mode);
+          view.fit();
+        } catch (error) {
+          window.alert(`Could not open ${file.name}: ${(error as Error).message}`);
+        }
+      });
+      input.click();
     },
     save() {
       editor.commitFloating();
@@ -420,7 +502,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
     const write = () => {
       pending.delete(mode);
       try {
-        void saveAutosave(mode, mode === "station" ? stationAutosave(doc, palette) : serialize(doc));
+        void saveAutosave(mode, autosaveText(doc, palette));
       } catch {
         // A document that cannot be written now is written on the next change.
       }
@@ -530,7 +612,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
   clear(
     app,
     buildTopBar(editor, actions),
-    h("main", { class: "workspace" }, buildSidebar(editor, view, actions), stage, buildPalettePanel(editor)),
+    h("main", { class: "workspace" }, buildSidebar(editor, view, actions), stage, buildRightSidebar(editor, library, view, actions)),
     status,
     dialog
   );
