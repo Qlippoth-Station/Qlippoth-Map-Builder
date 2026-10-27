@@ -1,39 +1,73 @@
 import {
+  ENTRY_ID,
   LAYERS,
   cellKey,
+  clampCohort,
   clampSize,
+  entryRenumbering,
   inBounds,
   parseKey,
   sameBrush,
   type Brush,
+  type EntrySettings,
   type LayerId,
   type MapDocument,
 } from "./document";
 import { MODE_INFO, type ModeId } from "./modes";
 import type { Palette } from "./palette";
 
-export const TOOLS = ["brush", "rect", "fill", "erase", "pick"] as const;
-export type ToolId = (typeof TOOLS)[number];
+/** What a click does. */
+export const ACTIONS = ["brush", "erase", "select"] as const;
+export type ActionId = (typeof ACTIONS)[number];
 
-export const TOOL_INFO: Record<ToolId, { name: string; key: string; hint: string }> = {
-  brush: { name: "Brush", key: "B", hint: "Paint cells with the selected item" },
-  rect: { name: "Rectangle", key: "R", hint: "Drag to fill a rectangle" },
-  fill: { name: "Fill", key: "F", hint: "Fill the connected area of the same content" },
+/** Which cells a click covers; shared by all actions. */
+export const SHAPES = ["single", "rect", "fill"] as const;
+export type ShapeId = (typeof SHAPES)[number];
+
+export const ACTION_INFO: Record<ActionId, { name: string; key: string; hint: string }> = {
+  brush: { name: "Brush", key: "B", hint: "Paint with the selected item" },
   erase: { name: "Erase", key: "E", hint: "Clear cells on the active layer" },
-  pick: { name: "Pick", key: "I", hint: "Pick the item under the cursor (also right click)" },
+  select: { name: "Select", key: "M", hint: "Select cells, then drag them to move. Shift adds, Alt removes" },
 };
 
-/** What changed, so views only redo the work they need. */
-export type Topic = "cells" | "document" | "selection" | "view" | "history" | "mode";
+export const SHAPE_INFO: Record<ShapeId, { name: string; key: string; hint: string }> = {
+  single: { name: "Single", key: "S", hint: "One cell at a time; drag for a line" },
+  rect: { name: "Rectangle", key: "R", hint: "Drag a rectangle" },
+  fill: { name: "Fill", key: "F", hint: "The connected area of the same content on the active layer" },
+};
+
+export type SelectOp = "replace" | "add" | "subtract";
+
+/** What changed, so views only redo the work they need. "area" is the cell selection and floating content. */
+export type Topic = "cells" | "document" | "selection" | "view" | "history" | "mode" | "area";
 
 type Change =
   | { type: "cell"; layer: LayerId; key: string; before: Brush | null; after: Brush | null }
   | { type: "size"; before: [number, number]; after: [number, number] }
-  | { type: "name"; before: string; after: string };
+  | { type: "name"; before: string; after: string }
+  | { type: "entry"; before: EntrySettings; after: EntrySettings };
 
 export interface Warning {
   message: string;
   at?: [number, number];
+}
+
+/**
+ * Content picked up from the map (a moved selection) or brought in from another file (Add).
+ * It follows the mouse and is only written into the document when placed.
+ */
+export interface Floating {
+  /** Contents per layer, keyed by cell relative to (x, y). */
+  cells: Map<LayerId, Map<string, Brush>>;
+  /** Outline of the floating content, relative keys. */
+  mask: Set<string>;
+  x: number;
+  y: number;
+  /** Where it was picked up; placing it there again changes nothing. */
+  fromX: number;
+  fromY: number;
+  /** Cells the content was lifted from (absolute keys), cleared when it is placed. Null for added files. */
+  source: Set<string> | null;
 }
 
 /** Everything that belongs to one mode's document; the mode being left is parked in this form. */
@@ -41,6 +75,7 @@ interface Session {
   doc: MapDocument;
   activeLayer: LayerId;
   selected: Record<LayerId, string | null>;
+  selection: Set<string> | null;
   undoStack: Change[][];
   redoStack: Change[][];
   revision: number;
@@ -52,6 +87,7 @@ function newSession(doc: MapDocument): Session {
     doc,
     activeLayer: "floor",
     selected: { floor: null, structure: null, object: null, marker: null },
+    selection: null,
     undoStack: [],
     redoStack: [],
     revision: 0,
@@ -62,11 +98,17 @@ function newSession(doc: MapDocument): Session {
 export class Editor {
   doc: MapDocument;
   activeLayer: LayerId = "floor";
-  tool: ToolId = "brush";
+  action: ActionId = "brush";
+  shape: ShapeId = "single";
   selected: Record<LayerId, string | null> = { floor: null, structure: null, object: null, marker: null };
   visible: Record<LayerId, boolean> = { floor: true, structure: true, object: true, marker: true };
   dimInactive = false;
   showGrid = true;
+  /** Selected cells (absolute keys). While set, painting and erasing only touch these cells. */
+  selection: Set<string> | null = null;
+  floating: Floating | null = null;
+  /** Moving and erasing a selection takes every layer (true) or only the active one. */
+  allLayers = true;
   /** Increases on every edit; compared against the last saved value to know about unsaved work. */
   revision = 0;
   savedRevision = 0;
@@ -131,25 +173,28 @@ export class Editor {
    */
   switchMode(mode: ModeId, create: () => MapDocument): void {
     if (mode === this.mode) return;
+    this.commitFloating();
     this.endStroke();
     this.parked[this.mode] = this.capture();
     const next = this.parked[mode] ?? newSession(create());
     delete this.parked[mode];
     this.restore(next);
-    this.emit("mode", "document", "cells", "history", "selection", "view");
+    this.emit("mode", "document", "cells", "history", "selection", "view", "area");
   }
 
   private capture(): Session {
-    const { doc, activeLayer, selected, undoStack, redoStack, revision, savedRevision } = this;
-    return { doc, activeLayer, selected, undoStack, redoStack, revision, savedRevision };
+    const { doc, activeLayer, selected, selection, undoStack, redoStack, revision, savedRevision } = this;
+    return { doc, activeLayer, selected, selection, undoStack, redoStack, revision, savedRevision };
   }
 
   private restore(session: Session): void {
     this.stroke = null;
+    this.floating = null;
     ({
       doc: this.doc,
       activeLayer: this.activeLayer,
       selected: this.selected,
+      selection: this.selection,
       undoStack: this.undoStack,
       redoStack: this.redoStack,
       revision: this.revision,
@@ -157,7 +202,7 @@ export class Editor {
     } = session);
   }
 
-  // ---- Selection / view state ------------------------------------------------------------------
+  // ---- Tool state ------------------------------------------------------------------------------
 
   setLayer(layer: LayerId): void {
     this.activeLayer = layer;
@@ -165,8 +210,14 @@ export class Editor {
     this.emit("selection", "view");
   }
 
-  setTool(tool: ToolId): void {
-    this.tool = tool;
+  setAction(action: ActionId): void {
+    if (action !== "select") this.commitFloating();
+    this.action = action;
+    this.emit("selection");
+  }
+
+  setShape(shape: ShapeId): void {
+    this.shape = shape;
     this.emit("selection");
   }
 
@@ -174,7 +225,7 @@ export class Editor {
     this.selected[layer] = id;
     this.activeLayer = layer;
     this.visible[layer] = true;
-    if (this.tool === "erase" || this.tool === "pick") this.tool = "brush";
+    if (this.action !== "brush") this.setAction("brush");
     this.emit("selection", "view");
   }
 
@@ -191,6 +242,10 @@ export class Editor {
   }
 
   endStroke(): void {
+    // Entry orders stay 1..n after any marker edit; the renumbering is part of the same undo step.
+    if (this.stroke && this.mode === "domain" && this.stroke.some((change) => change.type === "cell" && change.layer === "marker")) {
+      for (const [key, brush] of entryRenumbering(this.doc.layers.marker)) this.set("marker", ...parseKey(key), brush);
+    }
     if (this.stroke && this.stroke.length > 0) {
       this.undoStack.push(this.stroke);
       if (this.undoStack.length > 500) this.undoStack.shift();
@@ -204,12 +259,26 @@ export class Editor {
     return this.doc.layers[layer].get(cellKey(x, y)) ?? null;
   }
 
-  /** Sets one cell. Must be called inside a stroke (or it opens a single-change stroke itself). */
+  /** What a cell shows right now: floating content wins over the document, and lifted cells look empty. */
+  displayed(layer: LayerId, x: number, y: number): Brush | null {
+    const floating = this.floating;
+    const cells = floating?.cells.get(layer);
+    if (floating && cells) {
+      const brush = cells.get(cellKey(x - floating.x, y - floating.y));
+      if (brush) return brush;
+      if (floating.source?.has(cellKey(x, y))) return null;
+    }
+    return this.get(layer, x, y);
+  }
+
+  /** Sets one cell, ignoring the selection. Must be called inside a stroke (or it opens a single-change stroke itself). */
   set(layer: LayerId, x: number, y: number, brush: Brush | null): void {
     if (!inBounds(this.doc, x, y)) return;
     const key = cellKey(x, y);
     const before = this.doc.layers[layer].get(key) ?? null;
     if (sameBrush(before, brush)) return;
+    // Painting an Entry over an Entry keeps the existing one and its place in the order.
+    if (brush?.id === ENTRY_ID && brush.order === undefined && before?.id === ENTRY_ID) return;
 
     const standalone = !this.stroke;
     if (standalone) this.beginStroke();
@@ -218,32 +287,54 @@ export class Editor {
     if (standalone) this.endStroke();
   }
 
+  /** Whether user edits may touch a cell: with a selection, only cells inside it. */
+  editable(x: number, y: number): boolean {
+    return !this.selection || this.selection.has(cellKey(x, y));
+  }
+
+  /** Sets one cell as a user edit, respecting the selection. */
+  paint(layer: LayerId, x: number, y: number, brush: Brush | null): void {
+    if (this.editable(x, y)) this.set(layer, x, y, brush);
+  }
+
   fillRect(layer: LayerId, x0: number, y0: number, x1: number, y1: number, brush: Brush | null): void {
-    const [minX, maxX] = [Math.max(0, Math.min(x0, x1)), Math.min(this.doc.width - 1, Math.max(x0, x1))];
-    const [minY, maxY] = [Math.max(0, Math.min(y0, y1)), Math.min(this.doc.height - 1, Math.max(y0, y1))];
     this.beginStroke();
-    for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) this.set(layer, x, y, brush);
+    for (const key of this.rectKeys(x0, y0, x1, y1)) this.paint(layer, ...parseKey(key), brush);
     this.endStroke();
   }
 
-  /** 4-neighbour flood fill over cells that hold the same thing as the start cell. */
+  /** 4-neighbour flood fill over cells that hold the same thing as the start cell (within the selection, if any). */
   floodFill(layer: LayerId, startX: number, startY: number, brush: Brush | null): void {
-    if (!inBounds(this.doc, startX, startY)) return;
-    const target = this.get(layer, startX, startY);
-    if (sameBrush(target, brush)) return;
-
+    if (!inBounds(this.doc, startX, startY) || !this.editable(startX, startY)) return;
+    if (sameBrush(this.get(layer, startX, startY), brush)) return;
+    const region = this.region(layer, startX, startY, true);
     this.beginStroke();
+    for (const key of region) this.set(layer, ...parseKey(key), brush);
+    this.endStroke();
+  }
+
+  /** Cells connected to the start cell holding the same item on a layer (Entries match regardless of order). */
+  private region(layer: LayerId, startX: number, startY: number, withinSelection: boolean): Set<string> {
+    const target = this.get(layer, startX, startY)?.id ?? null;
     const stack: [number, number][] = [[startX, startY]];
     const seen = new Set<string>();
     while (stack.length > 0) {
       const [x, y] = stack.pop()!;
       const key = cellKey(x, y);
-      if (seen.has(key) || !inBounds(this.doc, x, y) || !sameBrush(this.get(layer, x, y), target)) continue;
+      if (seen.has(key) || !inBounds(this.doc, x, y) || (withinSelection && !this.editable(x, y))) continue;
+      if ((this.get(layer, x, y)?.id ?? null) !== target) continue;
       seen.add(key);
-      this.set(layer, x, y, brush);
       stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
-    this.endStroke();
+    return seen;
+  }
+
+  private rectKeys(x0: number, y0: number, x1: number, y1: number): string[] {
+    const [minX, maxX] = [Math.max(0, Math.min(x0, x1)), Math.min(this.doc.width - 1, Math.max(x0, x1))];
+    const [minY, maxY] = [Math.max(0, Math.min(y0, y1)), Math.min(this.doc.height - 1, Math.max(y0, y1))];
+    const keys: string[] = [];
+    for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) keys.push(cellKey(x, y));
+    return keys;
   }
 
   /** Resizes around the bottom-left origin; cells that fall outside are removed (and come back on undo). */
@@ -252,6 +343,7 @@ export class Editor {
     const before: [number, number] = [this.doc.width, this.doc.height];
     if (after[0] === before[0] && after[1] === before[1]) return;
 
+    this.commitFloating();
     this.beginStroke();
     for (const layer of LAYERS) {
       for (const key of [...this.doc.layers[layer].keys()]) {
@@ -259,22 +351,26 @@ export class Editor {
         if (x >= after[0] || y >= after[1]) this.set(layer, x, y, null);
       }
     }
-    const change: Change = { type: "size", before, after };
-    this.apply(change);
-    this.stroke!.push(change);
+    this.record({ type: "size", before, after });
     this.endStroke();
+    if (this.selection) this.setSelection(new Set([...this.selection].filter((key) => inBounds(this.doc, ...parseKey(key)))));
   }
 
   rename(name: string): void {
     if (name === this.doc.name) return;
-    const change: Change = { type: "name", before: this.doc.name, after: name };
     this.beginStroke();
-    this.apply(change);
-    this.stroke!.push(change);
+    this.record({ type: "name", before: this.doc.name, after: name });
     this.endStroke();
   }
 
+  private record(change: Change): void {
+    this.apply(change);
+    this.stroke!.push(change);
+  }
+
   undo(): void {
+    // With floating content, undo first puts it back where it came from (or drops an added file).
+    if (this.floating) return this.cancelFloating();
     this.endStroke();
     const changes = this.undoStack.pop();
     if (!changes) return;
@@ -284,6 +380,7 @@ export class Editor {
   }
 
   redo(): void {
+    if (this.floating) return;
     this.endStroke();
     const changes = this.redoStack.pop();
     if (!changes) return;
@@ -293,11 +390,11 @@ export class Editor {
   }
 
   get canUndo(): boolean {
-    return this.undoStack.length > 0;
+    return this.undoStack.length > 0 || !!this.floating;
   }
 
   get canRedo(): boolean {
-    return this.redoStack.length > 0;
+    return this.redoStack.length > 0 && !this.floating;
   }
 
   /** Replaces the document of its mode (switching to that mode first); that mode's history is dropped. */
@@ -308,12 +405,14 @@ export class Editor {
       return;
     }
     this.stroke = null;
+    this.floating = null;
+    this.selection = null;
     this.doc = doc;
     this.undoStack = [];
     this.redoStack = [];
     this.revision++;
     this.savedRevision = this.revision;
-    this.emit("document", "cells", "history");
+    this.emit("document", "cells", "history", "area");
   }
 
   markSaved(): void {
@@ -337,7 +436,207 @@ export class Editor {
         this.doc.name = change.after;
         this.emit("document");
         break;
+      case "entry":
+        this.doc.entry = change.after;
+        this.emit("document");
+        break;
     }
+  }
+
+  // ---- Selection -------------------------------------------------------------------------------
+
+  private setSelection(keys: Set<string> | null): void {
+    this.selection = keys && keys.size > 0 ? keys : null;
+    this.emit("area");
+  }
+
+  /** Changes the selection: replace it, add to it (Shift) or remove from it (Alt). */
+  selectCells(keys: Iterable<string>, op: SelectOp): void {
+    this.commitFloating();
+    const next = new Set(op === "replace" ? [] : this.selection ?? []);
+    for (const key of keys) {
+      if (!inBounds(this.doc, ...parseKey(key))) continue;
+      if (op === "subtract") next.delete(key);
+      else next.add(key);
+    }
+    this.setSelection(next);
+  }
+
+  selectRect(x0: number, y0: number, x1: number, y1: number, op: SelectOp): void {
+    this.selectCells(this.rectKeys(x0, y0, x1, y1), op);
+  }
+
+  /** Magic wand: the connected area of the same content on the active layer. */
+  selectRegion(x: number, y: number, op: SelectOp): void {
+    if (inBounds(this.doc, x, y)) this.selectCells(this.region(this.activeLayer, x, y, false), op);
+  }
+
+  selectAll(): void {
+    this.selectRect(0, 0, this.doc.width - 1, this.doc.height - 1, "replace");
+  }
+
+  deselect(): void {
+    this.commitFloating();
+    this.setSelection(null);
+  }
+
+  /** Layers a moved or erased selection takes. */
+  get affectedLayers(): LayerId[] {
+    return this.allLayers ? [...this.layers] : [this.activeLayer];
+  }
+
+  /** Clears the selected cells on the affected layers. */
+  eraseSelection(): void {
+    this.commitFloating();
+    if (!this.selection) return;
+    this.beginStroke();
+    for (const layer of this.affectedLayers) for (const key of this.selection) this.set(layer, ...parseKey(key), null);
+    this.endStroke();
+  }
+
+  /** Fills every selected cell of the active layer with the selected item. */
+  fillSelection(): void {
+    this.commitFloating();
+    const brush = this.selectedBrush();
+    if (!this.selection || !brush) return;
+    this.beginStroke();
+    for (const key of this.selection) this.set(this.activeLayer, ...parseKey(key), brush);
+    this.endStroke();
+  }
+
+  // ---- Floating content ------------------------------------------------------------------------
+
+  /** Picks up the selected cells so they can be moved. Returns false when nothing is selected. */
+  liftSelection(): boolean {
+    if (this.floating) return true;
+    if (!this.selection) return false;
+    const points = [...this.selection].map(parseKey);
+    const x = Math.min(...points.map(([px]) => px));
+    const y = Math.min(...points.map(([, py]) => py));
+    const cells = new Map<LayerId, Map<string, Brush>>();
+    for (const layer of this.affectedLayers) {
+      const layerCells = new Map<string, Brush>();
+      for (const [px, py] of points) {
+        const brush = this.get(layer, px, py);
+        if (brush) layerCells.set(cellKey(px - x, py - y), brush);
+      }
+      cells.set(layer, layerCells);
+    }
+    const mask = new Set(points.map(([px, py]) => cellKey(px - x, py - y)));
+    this.floating = { cells, mask, x, y, fromX: x, fromY: y, source: new Set(this.selection) };
+    this.emit("area", "cells", "history");
+    return true;
+  }
+
+  moveFloating(x: number, y: number): void {
+    if (!this.floating || (this.floating.x === x && this.floating.y === y)) return;
+    this.floating.x = x;
+    this.floating.y = y;
+    this.emit("area", "cells");
+  }
+
+  /** Moves the selection by whole cells (arrow keys), picking it up first. */
+  nudge(dx: number, dy: number): void {
+    if (!this.liftSelection()) return;
+    this.moveFloating(this.floating!.x + dx, this.floating!.y + dy);
+  }
+
+  floatingContains(x: number, y: number): boolean {
+    return !!this.floating?.mask.has(cellKey(x - this.floating.x, y - this.floating.y));
+  }
+
+  /**
+   * Writes floating content into the document as one undo step. Its filled cells overwrite what is below;
+   * its empty cells leave the map as it is, so an added department never wipes out its surroundings.
+   * Anything outside the map is dropped. The placed area stays selected.
+   */
+  commitFloating(): void {
+    const floating = this.floating;
+    if (!floating) return;
+    if (floating.source && floating.x === floating.fromX && floating.y === floating.fromY) return this.cancelFloating();
+    this.floating = null;
+    this.beginStroke();
+    if (floating.source) {
+      for (const layer of floating.cells.keys()) for (const key of floating.source) this.set(layer, ...parseKey(key), null);
+    }
+    for (const [layer, cells] of floating.cells) {
+      for (const [key, brush] of cells) {
+        const [rx, ry] = parseKey(key);
+        this.set(layer, floating.x + rx, floating.y + ry, brush);
+      }
+    }
+    this.endStroke();
+    const placed = [...floating.mask].map((key) => {
+      const [rx, ry] = parseKey(key);
+      return cellKey(floating.x + rx, floating.y + ry);
+    });
+    this.setSelection(new Set(placed.filter((key) => inBounds(this.doc, ...parseKey(key)))));
+    this.emit("cells", "history");
+  }
+
+  /** Drops floating content: a moved selection goes back, an added file is discarded. */
+  cancelFloating(): void {
+    const floating = this.floating;
+    if (!floating) return;
+    this.floating = null;
+    if (!floating.source) this.setSelection(null);
+    this.emit("area", "cells", "history");
+  }
+
+  /**
+   * Brings another file of the same mode in as floating content at (x, y), to be moved into place.
+   * Its entries keep their order but come after the existing ones.
+   */
+  addDocument(other: MapDocument, x: number, y: number): void {
+    if (other.mode !== this.mode) {
+      throw new Error(`A ${MODE_INFO[other.mode].name.toLowerCase()} can't be added to a ${MODE_INFO[this.mode].name.toLowerCase()}.`);
+    }
+    this.commitFloating();
+    const orderOffset = Math.max(0, ...[...this.doc.layers.marker.values()].map((brush) => brush.order ?? 0));
+    const cells = new Map<LayerId, Map<string, Brush>>();
+    for (const layer of this.layers) {
+      const layerCells = new Map<string, Brush>();
+      for (const [key, brush] of other.layers[layer]) {
+        layerCells.set(key, brush.order === undefined ? brush : { ...brush, order: brush.order + orderOffset });
+      }
+      cells.set(layer, layerCells);
+    }
+    const mask = new Set<string>();
+    for (let ry = 0; ry < other.height; ry++) for (let rx = 0; rx < other.width; rx++) mask.add(cellKey(rx, ry));
+    this.selection = null;
+    this.floating = { cells, mask, x, y, fromX: x, fromY: y, source: null };
+    this.action = "select";
+    this.emit("area", "cells", "selection", "history");
+  }
+
+  // ---- Entries (domain) ------------------------------------------------------------------------
+
+  /** Entry markers in order. */
+  entries(): [string, Brush][] {
+    return [...this.doc.layers.marker].filter(([, brush]) => brush.id === ENTRY_ID).sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0));
+  }
+
+  setEntrySettings(settings: Partial<EntrySettings>): void {
+    const before = this.doc.entry;
+    const after = { ...before, ...settings };
+    after.cohort = clampCohort(after.cohort);
+    if (after.mode === before.mode && after.cohort === before.cohort && after.loop === before.loop) return;
+    this.beginStroke();
+    this.record({ type: "entry", before, after });
+    this.endStroke();
+  }
+
+  /** Swaps an entry with its neighbour in the order (delta -1 = earlier, +1 = later). */
+  moveEntry(key: string, delta: number): void {
+    const entries = this.entries();
+    const index = entries.findIndex(([entryKey]) => entryKey === key);
+    const other = entries[index + delta];
+    if (index < 0 || !other) return;
+    const [, brush] = entries[index];
+    this.beginStroke();
+    this.set("marker", ...parseKey(key), { ...brush, order: other[1].order });
+    this.set("marker", ...parseKey(other[0]), { ...other[1], order: brush.order });
+    this.endStroke();
   }
 
   // ---- Validation ------------------------------------------------------------------------------
@@ -356,16 +655,13 @@ export class Editor {
     return warnings;
   }
 
-  /** Q-Gate rules: one entry, a Qlippoth spot, markers on walkable floor. */
+  /** Q-Gate rules: at least one entry, a Qlippoth spot, markers on walkable floor. */
   private validateDomain(warnings: Warning[]): void {
     const markers = this.doc.layers.marker;
-    const positions = (id: string) =>
-      [...markers.entries()].filter(([, brush]) => brush.id === id).map(([key]) => parseKey(key));
+    const count = (id: string) => [...markers.values()].filter((brush) => brush.id === id).length;
 
-    const entries = positions("Entry");
-    if (entries.length === 0) warnings.push({ message: "No Entry marker." });
-    for (const at of entries.slice(1)) warnings.push({ message: "More than one Entry marker.", at });
-    if (positions("QlippothSpot").length === 0) warnings.push({ message: "No Qlippoth spot marker." });
+    if (count(ENTRY_ID) === 0) warnings.push({ message: "No Entry marker." });
+    if (count("QlippothSpot") === 0) warnings.push({ message: "No Qlippoth spot marker." });
 
     for (const [key] of markers) {
       const [x, y] = parseKey(key);
@@ -383,8 +679,8 @@ function invert(change: Change): Change {
     case "cell":
       return { ...change, before: change.after, after: change.before };
     case "size":
-      return { type: "size", before: change.after, after: change.before };
     case "name":
-      return { type: "name", before: change.after, after: change.before };
+    case "entry":
+      return { ...change, before: change.after, after: change.before } as Change;
   }
 }

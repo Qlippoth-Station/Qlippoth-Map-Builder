@@ -18,9 +18,15 @@ Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved 
 
 1. Pick a mode, then a layer (Floor, Structure, Object, and Marker in domain mode).
 2. Pick an item from the palette on the right.
-3. Paint with Brush, Rectangle or Fill. Right click picks what is under the cursor.
-4. Domains: place one **Entry** and one **Qlippoth spot** marker. The *Checks* panel lists anything that is missing.
-5. **Save** downloads the file. **Open** takes either kind of file and switches to its mode.
+3. Choose an **action** (Brush, Erase, Select) and a **shape** (Single, Rectangle, Fill); every action works with every shape.
+   Right click picks what is under the cursor.
+4. **Select** cells, then drag them (or use the arrow keys) to move them. While something is selected, Brush and Erase
+   only touch the selection; the *Selection* panel fills or erases it in one go.
+5. **Add** brings another file of the same mode into the current map, ready to move into place. Build departments or
+   rooms one by one and put them together this way. A domain can't be added to a station, or the other way round.
+6. Domains: place at least one **Entry** and one **Qlippoth spot** marker, and choose how players are spread over
+   the entries (*Random*, *Order* or *Cohort*). The *Checks* panel lists anything that is missing.
+7. **Save** downloads the file. **Open** takes either kind of file and switches to its mode.
 
 Press `?` in the editor for all shortcuts.
 
