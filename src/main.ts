@@ -1,6 +1,6 @@
 import "./style.css";
 import { LAYER_NAMES, clampSize, createDocument, deserialize, serialize, type MapDocument } from "./document";
-import { TOOLS, TOOL_INFO, Editor } from "./editor";
+import { ACTIONS, ACTION_INFO, Editor, SHAPES, SHAPE_INFO } from "./editor";
 import { clear, h } from "./dom";
 import { MODE_INFO, type ModeId } from "./modes";
 import { loadPalette, type Palette } from "./palette";
@@ -64,6 +64,21 @@ function start(palette: Palette, autosaves: Autosaves): void {
   const confirmDiscard = (mode: ModeId = editor.mode) =>
     !editor.isDirty(mode) || window.confirm(`You have unsaved changes in ${MODE_INFO[mode].name} mode. Discard them?`);
 
+  /** Lets the user pick a .json file and reads it as a map document. */
+  const pickDocument = (handle: (doc: MapDocument, file: File) => void) => {
+    const input = h("input", { type: "file", accept: ".json,application/json" });
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        handle(deserialize(await file.text()), file);
+      } catch (error) {
+        window.alert(`Could not open ${file.name}: ${(error as Error).message}`);
+      }
+    });
+    input.click();
+  };
+
   const actions = {
     switchMode(mode: ModeId) {
       if (mode === editor.mode) return;
@@ -75,24 +90,38 @@ function start(palette: Palette, autosaves: Autosaves): void {
       showNewDialog();
     },
     open() {
-      const input = h("input", { type: "file", accept: ".json,application/json" });
-      input.addEventListener("change", async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        try {
-          // The file decides the mode; opening a station file while in domain mode switches to station mode.
-          const doc = deserialize(await file.text());
-          if (!confirmDiscard(doc.mode)) return;
-          editor.replaceDocument(doc);
-          saveLastMode(doc.mode);
-          view.fit();
-        } catch (error) {
-          window.alert(`Could not open ${file.name}: ${(error as Error).message}`);
-        }
+      // The file decides the mode; opening a station file while in domain mode switches to station mode.
+      pickDocument((doc) => {
+        if (!confirmDiscard(doc.mode)) return;
+        editor.replaceDocument(doc);
+        saveLastMode(doc.mode);
+        view.fit();
       });
-      input.click();
+    },
+    /** Brings another file of the same mode into the current map as floating content, centred in the view. */
+    add() {
+      pickDocument((doc, file) => {
+        const target = MODE_INFO[editor.mode].name.toLowerCase();
+        if (doc.mode !== editor.mode) {
+          window.alert(`${file.name} is a ${MODE_INFO[doc.mode].name.toLowerCase()} file. Only ${target} files can be added to a ${target}.`);
+          return;
+        }
+        const { width, height } = editor.doc;
+        if (doc.width > width || doc.height > height) {
+          const [w, h] = [Math.max(width, doc.width), Math.max(height, doc.height)];
+          const grow = window.confirm(
+            `${file.name} is ${doc.width}×${doc.height}, larger than this ${target} (${width}×${height}).\n\n` +
+              `OK: enlarge the map to ${w}×${h}.\nCancel: keep the size; parts outside the map are left out when placed.`
+          );
+          if (grow) editor.resize(w, h);
+        }
+        const [cx, cy] = view.centerCell();
+        const place = (center: number, size: number, room: number) => Math.max(0, Math.min(room - size, center - Math.floor(size / 2)));
+        editor.addDocument(doc, place(cx, doc.width, editor.doc.width), place(cy, doc.height, editor.doc.height));
+      });
     },
     save() {
+      editor.commitFloating();
       const blob = new Blob([serialize(editor.doc)], { type: "application/json" });
       const link = h("a", { href: URL.createObjectURL(blob), download: fileName(editor.doc.name, editor.mode) });
       link.click();
@@ -156,9 +185,15 @@ function start(palette: Palette, autosaves: Autosaves): void {
 
   function showHelpDialog() {
     const rows: [string, string][] = [
-      ...TOOLS.map((tool): [string, string] => [TOOL_INFO[tool].key, TOOL_INFO[tool].name]),
+      ...ACTIONS.map((action): [string, string] => [ACTION_INFO[action].key, `${ACTION_INFO[action].name} action`]),
+      ...SHAPES.map((shape): [string, string] => [SHAPE_INFO[shape].key, `${SHAPE_INFO[shape].name} shape`]),
       ...editor.layers.map((layer, index): [string, string] => [String(index + 1), `${LAYER_NAMES[layer]} layer`]),
       ["Right click", "Pick item under cursor"],
+      ["Shift / Alt + click", "Add to / remove from the selection"],
+      ["Drag selection / Arrows", "Move the selection (Shift + arrow: 10 cells)"],
+      ["Enter / Esc", "Place moved content / cancel or deselect"],
+      ["Delete", "Erase the selection"],
+      ["Ctrl+A / Ctrl+D", "Select all / deselect"],
       ["Space + drag / Middle drag", "Pan"],
       ["Wheel", "Zoom"],
       ["0", "Fit to view"],
@@ -166,6 +201,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
       ["/", "Search palette"],
       ["Ctrl+Z / Ctrl+Y", "Undo / Redo"],
       ["Ctrl+S / Ctrl+O", "Save / Open"],
+      ["Ctrl+Shift+O", "Add a file into this map"],
     ];
     openDialog(
       "Shortcuts",
@@ -250,9 +286,12 @@ function start(palette: Palette, autosaves: Autosaves): void {
         z: () => (event.shiftKey ? editor.redo() : editor.undo()),
         y: () => editor.redo(),
         s: () => actions.save(),
-        o: () => actions.open(),
+        o: () => (event.shiftKey ? actions.add() : actions.open()),
+        a: () => editor.selectAll(),
+        d: () => editor.deselect(),
       };
-      if (handled[key] && !(isTyping(event) && (key === "z" || key === "y"))) {
+      // Text fields keep their own undo, redo and select all.
+      if (handled[key] && !(isTyping(event) && "zya".includes(key))) {
         event.preventDefault();
         handled[key]();
       }
@@ -260,12 +299,35 @@ function start(palette: Palette, autosaves: Autosaves): void {
     }
     if (isTyping(event) || event.altKey) return;
 
-    const tool = TOOLS.find((id) => TOOL_INFO[id].key.toLowerCase() === key);
-    if (tool) return editor.setTool(tool);
+    const action = ACTIONS.find((id) => ACTION_INFO[id].key.toLowerCase() === key);
+    if (action) return editor.setAction(action);
+    const shape = SHAPES.find((id) => SHAPE_INFO[id].key.toLowerCase() === key);
+    if (shape) return editor.setShape(shape);
     const layerIndex = Number(event.key) - 1;
     if (Number.isInteger(layerIndex) && layerIndex >= 0 && layerIndex < editor.layers.length) return editor.setLayer(editor.layers[layerIndex]);
 
+    const arrows: Record<string, [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, 1], arrowdown: [0, -1] };
+    if (arrows[key] && (editor.floating || (editor.selection && editor.action === "select"))) {
+      event.preventDefault();
+      const step = event.shiftKey ? 10 : 1;
+      return editor.nudge(arrows[key][0] * step, arrows[key][1] * step);
+    }
+
     switch (key) {
+      case "enter":
+        editor.commitFloating();
+        break;
+      case "escape":
+        if (editor.floating) editor.cancelFloating();
+        else editor.deselect();
+        break;
+      case "delete":
+      case "backspace":
+        if (editor.selection) {
+          event.preventDefault();
+          editor.eraseSelection();
+        }
+        break;
       case "g":
         editor.showGrid = !editor.showGrid;
         editor.emit("view");

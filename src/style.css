@@ -272,6 +272,8 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 4px;
+  padding-inline: 8px;
   background: var(--panel-raised);
   border-color: var(--border);
   text-align: left;
@@ -671,4 +673,94 @@ button.warning:hover {
   background: var(--accent);
   color: var(--accent-text);
   font-weight: 600;
+}
+
+/* ---- Tools, selection and entries ------------------------------------------------------------- */
+
+.tools h3 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.tools .tool-grid + h3 {
+  margin-top: 8px;
+}
+
+.map-canvas.movable {
+  cursor: move;
+}
+
+.selection-panel,
+.entry-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selection-panel[hidden],
+.entry-panel[hidden] {
+  display: none;
+}
+
+.selection-panel p,
+.entry-panel p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.button-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.cohort {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field.inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.field.inline input {
+  width: 64px;
+}
+
+.entry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.entry-list li {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.entry-list .entry-name {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.entry-list .at {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
 }

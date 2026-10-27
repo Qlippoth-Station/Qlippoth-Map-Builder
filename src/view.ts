@@ -1,5 +1,5 @@
-import { inBounds, type Brush, type LayerId } from "./document";
-import type { Editor } from "./editor";
+import { ENTRY_ID, cellKey, inBounds, parseKey, type Brush, type LayerId } from "./document";
+import type { Editor, SelectOp } from "./editor";
 import { iconOrigin } from "./palette";
 
 const BASE_CELL = 32;
@@ -21,6 +21,9 @@ export class MapView {
     | { kind: "pan"; startX: number; startY: number; originX: number; originY: number }
     | { kind: "paint"; last: [number, number]; brush: Brush | null }
     | { kind: "rect"; start: [number, number]; brush: Brush | null }
+    | { kind: "select-rect"; start: [number, number]; op: SelectOp }
+    | { kind: "select-cells"; last: [number, number]; op: SelectOp }
+    | { kind: "move"; start: [number, number]; originX: number; originY: number }
     | null = null;
 
   /** Called when the hovered cell changes, for the status bar. */
@@ -61,6 +64,12 @@ export class MapView {
     this.offsetX = (width - doc.width * this.cellSize) / 2;
     this.offsetY = (height - doc.height * this.cellSize) / 2;
     this.invalidate();
+  }
+
+  /** The map cell at the middle of the view (may lie outside the map). */
+  centerCell(): [number, number] {
+    const { width, height } = this.canvas.getBoundingClientRect();
+    return this.screenToCell(width / 2, height / 2);
   }
 
   /** Centers the view on a cell (used by the warning list). */
@@ -124,10 +133,9 @@ export class MapView {
     for (const layer of editor.layers) {
       if (!editor.visible[layer]) continue;
       ctx.globalAlpha = editor.dimInactive && layer !== editor.activeLayer ? 0.3 : 1;
-      const cells = doc.layers[layer];
       for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
-          const brush = cells.get(`${x},${y}`);
+          const brush = editor.displayed(layer, x, y);
           if (brush) this.drawBrush(layer, brush, ...this.cellToScreen(x, y), cell);
         }
       }
@@ -180,7 +188,9 @@ export class MapView {
       ctx.font = `600 ${Math.max(8, size * 0.45)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(item.glyph, sx + size / 2, sy + size / 2 + 1);
+      // Entries show their place in the order when the order matters.
+      const ordered = brush.id === ENTRY_ID && brush.order !== undefined && this.editor.doc.entry.mode !== "random";
+      ctx.fillText(ordered ? `${item.glyph}${brush.order}` : item.glyph, sx + size / 2, sy + size / 2 + 1, size - 2);
       return;
     }
 
@@ -199,35 +209,72 @@ export class MapView {
   private drawOverlay(accent: string): void {
     const { ctx, editor } = this;
     const cell = this.cellSize;
+    const danger = getComputedStyle(document.documentElement).getPropertyValue("--danger").trim() || "#e05555";
 
-    if (this.drag?.kind === "rect" && this.hover) {
-      const [x0, y0] = this.drag.start;
+    if (editor.floating) {
+      const { mask, x, y } = editor.floating;
+      this.drawOutline(mask, x, y, accent, []);
+    } else if (editor.selection) {
+      this.drawOutline(editor.selection, 0, 0, accent, [5, 4]);
+    }
+
+    const drag = this.drag;
+    if ((drag?.kind === "rect" || drag?.kind === "select-rect") && this.hover) {
+      const [x0, y0] = drag.start;
       const [x1, y1] = this.hover;
       const [sx0, sy0] = this.cellToScreen(Math.min(x0, x1), Math.max(y0, y1));
       const w = (Math.abs(x1 - x0) + 1) * cell;
       const h = (Math.abs(y1 - y0) + 1) * cell;
-      ctx.fillStyle = accent;
+      const color = drag.kind === "rect" && !drag.brush ? danger : accent;
+      ctx.fillStyle = color;
       ctx.globalAlpha = 0.18;
       ctx.fillRect(sx0, sy0, w, h);
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = accent;
+      ctx.strokeStyle = color;
       ctx.lineWidth = 2;
+      if (drag.kind === "select-rect") ctx.setLineDash([5, 4]);
       ctx.strokeRect(sx0 + 1, sy0 + 1, w - 2, h - 2);
+      ctx.setLineDash([]);
       return;
     }
 
-    if (this.hover && inBounds(editor.doc, ...this.hover)) {
+    if (this.hover && inBounds(editor.doc, ...this.hover) && drag?.kind !== "move") {
       const [sx, sy] = this.cellToScreen(...this.hover);
       const brush = editor.selectedBrush();
-      if (brush && (editor.tool === "brush" || editor.tool === "rect" || editor.tool === "fill")) {
+      if (brush && editor.action === "brush" && editor.editable(...this.hover)) {
         ctx.globalAlpha = 0.55;
         this.drawBrush(editor.activeLayer, brush, sx, sy, cell);
         ctx.globalAlpha = 1;
       }
-      ctx.strokeStyle = editor.tool === "erase" ? "#e05555" : accent;
+      ctx.strokeStyle = editor.action === "erase" ? danger : accent;
       ctx.lineWidth = 2;
       ctx.strokeRect(sx + 1, sy + 1, cell - 2, cell - 2);
     }
+  }
+
+  /** Outlines a set of cells (keys offset by dx, dy) along its outer edges. */
+  private drawOutline(keys: Set<string>, dx: number, dy: number, color: string, dash: number[]): void {
+    const { ctx } = this;
+    const cell = this.cellSize;
+    ctx.beginPath();
+    for (const key of keys) {
+      const [kx, ky] = parseKey(key);
+      const [sx, sy] = this.cellToScreen(kx + dx, ky + dy);
+      const [left, top, right, bottom] = [Math.round(sx) + 0.5, Math.round(sy) + 0.5, Math.round(sx + cell) + 0.5, Math.round(sy + cell) + 0.5];
+      if (!keys.has(cellKey(kx, ky + 1))) (ctx.moveTo(left, top), ctx.lineTo(right, top));
+      if (!keys.has(cellKey(kx, ky - 1))) (ctx.moveTo(left, bottom), ctx.lineTo(right, bottom));
+      if (!keys.has(cellKey(kx - 1, ky))) (ctx.moveTo(left, top), ctx.lineTo(left, bottom));
+      if (!keys.has(cellKey(kx + 1, ky))) (ctx.moveTo(right, top), ctx.lineTo(right, bottom));
+    }
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.setLineDash([]);
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = color;
+    ctx.setLineDash(dash);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // ---- Input -----------------------------------------------------------------------------------
@@ -259,25 +306,25 @@ export class MapView {
       if (event.button !== 0) return;
 
       const editor = this.editor;
-      const layer = editor.activeLayer;
-      const brush = editor.tool === "erase" ? null : editor.selectedBrush();
-      switch (editor.tool) {
-        case "pick":
-          this.pick(...cell);
-          break;
-        case "fill":
-          if (brush) editor.floodFill(layer, ...cell, brush);
-          break;
-        case "rect":
-          if (brush) this.drag = { kind: "rect", start: cell, brush };
-          break;
-        case "brush":
-        case "erase":
-          if (!brush && editor.tool === "brush") break;
-          editor.beginStroke();
-          editor.set(layer, ...cell, brush);
-          this.drag = { kind: "paint", last: cell, brush };
-          break;
+      if (editor.action === "select") {
+        this.beginSelect(cell, event);
+      } else {
+        const layer = editor.activeLayer;
+        const brush = editor.action === "erase" ? null : editor.selectedBrush();
+        if (editor.action === "brush" && !brush) return;
+        switch (editor.shape) {
+          case "fill":
+            editor.floodFill(layer, ...cell, brush);
+            break;
+          case "rect":
+            this.drag = { kind: "rect", start: cell, brush };
+            break;
+          case "single":
+            editor.beginStroke();
+            editor.paint(layer, ...cell, brush);
+            this.drag = { kind: "paint", last: cell, brush };
+            break;
+        }
       }
       this.invalidate();
     });
@@ -292,9 +339,15 @@ export class MapView {
         this.offsetY = drag.originY + sy - drag.startY;
         this.invalidate();
       } else if (drag?.kind === "paint") {
-        for (const [x, y] of line(drag.last, cell)) this.editor.set(this.editor.activeLayer, x, y, drag.brush);
+        for (const [x, y] of line(drag.last, cell)) this.editor.paint(this.editor.activeLayer, x, y, drag.brush);
         drag.last = cell;
+      } else if (drag?.kind === "select-cells") {
+        this.editor.selectCells(line(drag.last, cell).map(([x, y]) => cellKey(x, y)), drag.op);
+        drag.last = cell;
+      } else if (drag?.kind === "move") {
+        this.editor.moveFloating(drag.originX + cell[0] - drag.start[0], drag.originY + cell[1] - drag.start[1]);
       }
+      this.updateCursor(cell);
 
       if (!this.hover || this.hover[0] !== cell[0] || this.hover[1] !== cell[1]) {
         this.hover = cell;
@@ -309,6 +362,7 @@ export class MapView {
       canvas.classList.remove("panning");
       if (drag?.kind === "paint") this.editor.endStroke();
       if (drag?.kind === "rect" && this.hover) this.editor.fillRect(this.editor.activeLayer, ...drag.start, ...this.hover, drag.brush);
+      if (drag?.kind === "select-rect" && this.hover) this.editor.selectRect(...drag.start, ...this.hover, drag.op);
       this.invalidate();
     };
     canvas.addEventListener("pointerup", finish);
@@ -349,6 +403,43 @@ export class MapView {
         canvas.classList.remove("pan-ready");
       }
     });
+  }
+
+  /**
+   * Select action. A plain press on the selection (or on floating content) starts moving it;
+   * otherwise the shape decides what gets selected. Shift adds to the selection, Alt removes from it.
+   */
+  private beginSelect(cell: [number, number], event: PointerEvent): void {
+    const editor = this.editor;
+    const op: SelectOp = event.shiftKey ? "add" : event.altKey ? "subtract" : "replace";
+    const onFloating = editor.floatingContains(...cell);
+    const onSelection = !editor.floating && !!editor.selection?.has(cellKey(...cell));
+    if (op === "replace" && (onFloating || onSelection) && editor.liftSelection()) {
+      const { x, y } = editor.floating!;
+      this.drag = { kind: "move", start: cell, originX: x, originY: y };
+      return;
+    }
+    switch (editor.shape) {
+      case "fill":
+        editor.selectRegion(...cell, op);
+        break;
+      case "rect":
+        editor.commitFloating();
+        this.drag = { kind: "select-rect", start: cell, op };
+        break;
+      case "single":
+        editor.selectCells([cellKey(...cell)], op);
+        this.drag = { kind: "select-cells", last: cell, op: op === "replace" ? "add" : op };
+        break;
+    }
+  }
+
+  /** Move cursor over things that can be dragged with the select action. */
+  private updateCursor(cell: [number, number]): void {
+    const editor = this.editor;
+    const movable =
+      editor.action === "select" && (editor.floatingContains(...cell) || (!editor.floating && !!editor.selection?.has(cellKey(...cell))));
+    this.canvas.classList.toggle("movable", movable || this.drag?.kind === "move");
   }
 
   /** Picks the topmost visible item under the cell and switches to its layer. */

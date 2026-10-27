@@ -1,5 +1,5 @@
-import { LAYER_NAMES, MAX_SIZE, MIN_SIZE, type LayerId } from "./document";
-import { TOOLS, TOOL_INFO, type Editor, type Topic } from "./editor";
+import { ENTRY_MODES, LAYER_NAMES, MAX_COHORT, MAX_SIZE, MIN_SIZE, parseKey, type EntryMode, type LayerId } from "./document";
+import { ACTIONS, ACTION_INFO, SHAPES, SHAPE_INFO, type Editor, type Topic } from "./editor";
 import { clear, h } from "./dom";
 import { MODES, MODE_INFO, type ModeId } from "./modes";
 import { iconOrigin, type Palette, type PaletteItem } from "./palette";
@@ -23,32 +23,177 @@ export function icon(palette: Palette, item: PaletteItem | undefined, id?: strin
   return h("span", { class: "icon unknown", title: id ? `Unknown id: ${id}` : "Empty" }, id ? "?" : "");
 }
 
-// ---- Left sidebar: tools, layers, view options, warnings -------------------------------------------
+const ENTRY_MODE_INFO: Record<EntryMode, { name: string; hint: string }> = {
+  random: { name: "Random", hint: "Every player arrives at a random Entry." },
+  order: { name: "Order", hint: "First player to Entry 1, second to Entry 2, and so on, looping back to Entry 1." },
+  cohort: { name: "Cohort", hint: "Like Order, but each Entry takes a whole group before the next one is used." },
+};
+
+// ---- Left sidebar: tools, layers, selection, entries, view options, warnings -----------------------
 
 export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
-  const tools = h("div", { class: "tool-grid", role: "toolbar", "aria-label": "Tools" });
+  const tools = h("div", { class: "tools" });
   const layers = h("div", { class: "layer-list" });
+  const selectionSection = h("section", { class: "selection-panel" });
+  const entrySection = h("section", { class: "entry-panel" });
   const options = h("div", { class: "options" });
   const warnings = h("div", { class: "warnings" });
   const warningTitle = h("h2", {}, "Checks");
 
+  const toolButton = (info: { name: string; key: string; hint: string }, active: boolean, onclick: () => void) =>
+    h(
+      "button",
+      { class: `tool${active ? " active" : ""}`, title: `${info.hint} (${info.key})`, "aria-pressed": String(active), onclick },
+      h("span", { class: "tool-name" }, info.name),
+      h("kbd", {}, info.key)
+    );
+
   const renderTools = () =>
     clear(
       tools,
-      ...TOOLS.map((tool) =>
+      h("h3", {}, "Action"),
+      h(
+        "div",
+        { class: "tool-grid", role: "toolbar", "aria-label": "Action" },
+        ...ACTIONS.map((action) => toolButton(ACTION_INFO[action], editor.action === action, () => editor.setAction(action)))
+      ),
+      h("h3", {}, "Shape"),
+      h(
+        "div",
+        { class: "tool-grid", role: "toolbar", "aria-label": "Shape" },
+        ...SHAPES.map((shape) => toolButton(SHAPE_INFO[shape], editor.shape === shape, () => editor.setShape(shape)))
+      )
+    );
+
+  const renderSelection = () => {
+    const floating = editor.floating;
+    selectionSection.hidden = !floating && !editor.selection;
+    if (selectionSection.hidden) return;
+    const allLayers = h(
+      "label",
+      { class: "check", title: "Moving and erasing takes every layer, or only the active one" },
+      h("input", {
+        type: "checkbox",
+        checked: editor.allLayers,
+        disabled: !!floating,
+        onchange: (event: Event) => {
+          editor.allLayers = (event.target as HTMLInputElement).checked;
+          editor.emit("area");
+        },
+      }),
+      h("span", {}, "All layers")
+    );
+    if (floating) {
+      clear(
+        selectionSection,
+        h("h2", {}, floating.source ? "Moving selection" : "Adding map"),
+        h("p", { class: "muted" }, "Drag or use the arrow keys to move it. Enter places it, Esc cancels."),
+        h(
+          "div",
+          { class: "button-row" },
+          h("button", { class: "primary", onclick: () => editor.commitFloating() }, "Place"),
+          h("button", { class: "secondary", onclick: () => editor.cancelFloating() }, "Cancel")
+        ),
+        allLayers
+      );
+      return;
+    }
+    const brush = editor.selectedBrush();
+    const item = brush ? editor.palette.byLayer[editor.activeLayer].get(brush.id) : undefined;
+    clear(
+      selectionSection,
+      h("h2", {}, `Selection · ${editor.selection!.size} cells`),
+      h(
+        "div",
+        { class: "button-row" },
         h(
           "button",
           {
-            class: `tool${editor.tool === tool ? " active" : ""}`,
-            title: `${TOOL_INFO[tool].hint} (${TOOL_INFO[tool].key})`,
-            "aria-pressed": String(editor.tool === tool),
-            onclick: () => editor.setTool(tool),
+            class: "secondary",
+            disabled: !brush,
+            title: brush ? `Fill the selection with ${item?.name ?? brush.id} on the ${LAYER_NAMES[editor.activeLayer]} layer` : "Pick an item first",
+            onclick: () => editor.fillSelection(),
           },
-          h("span", { class: "tool-name" }, TOOL_INFO[tool].name),
-          h("kbd", {}, TOOL_INFO[tool].key)
-        )
-      )
+          "Fill"
+        ),
+        h("button", { class: "secondary", title: "Clear the selected cells (Delete)", onclick: () => editor.eraseSelection() }, "Erase"),
+        h("button", { class: "secondary", title: "Deselect (Esc)", onclick: () => editor.deselect() }, "Deselect")
+      ),
+      allLayers
     );
+  };
+
+  const renderEntries = () => {
+    entrySection.hidden = editor.mode !== "domain";
+    if (entrySection.hidden) return;
+    const settings = editor.doc.entry;
+    const entries = editor.entries();
+    const mode = h(
+      "select",
+      {
+        "aria-label": "Entry mode",
+        onchange: (event: Event) => editor.setEntrySettings({ mode: (event.target as HTMLSelectElement).value as EntryMode }),
+      },
+      ...ENTRY_MODES.map((id) => h("option", { value: id, selected: settings.mode === id }, ENTRY_MODE_INFO[id].name))
+    );
+    const cohort =
+      settings.mode === "cohort"
+        ? h(
+            "div",
+            { class: "cohort" },
+            h(
+              "label",
+              { class: "field inline" },
+              h("span", {}, "Group size"),
+              h("input", {
+                type: "number",
+                min: 1,
+                max: MAX_COHORT,
+                value: String(settings.cohort),
+                onchange: (event: Event) => editor.setEntrySettings({ cohort: Number((event.target as HTMLInputElement).value) }),
+              })
+            ),
+            h(
+              "label",
+              { class: "check", title: "After the last Entry: start again at Entry 1, or stop sending players" },
+              h("input", {
+                type: "checkbox",
+                checked: settings.loop,
+                onchange: (event: Event) => editor.setEntrySettings({ loop: (event.target as HTMLInputElement).checked }),
+              }),
+              h("span", {}, "Loop after the last Entry")
+            )
+          )
+        : null;
+    const ordered = settings.mode !== "random";
+    clear(
+      entrySection,
+      h("h2", {}, `Entries · ${entries.length}`),
+      mode,
+      h("p", { class: "muted" }, ENTRY_MODE_INFO[settings.mode].hint),
+      cohort,
+      entries.length
+        ? h(
+            "ol",
+            { class: "entry-list" },
+            ...entries.map(([key, brush], index) => {
+              const [x, y] = parseKey(key);
+              return h(
+                "li",
+                {},
+                h("button", { class: "ghost entry-name", title: "Show on the map", onclick: () => view.focus(x, y) }, ordered ? `Entry ${brush.order}` : "Entry", h("span", { class: "at" }, `${x}, ${y}`)),
+                ordered
+                  ? h("button", { class: "ghost", title: "Earlier", "aria-label": `Move Entry ${brush.order} earlier`, disabled: index === 0, onclick: () => editor.moveEntry(key, -1) }, "↑")
+                  : null,
+                ordered
+                  ? h("button", { class: "ghost", title: "Later", "aria-label": `Move Entry ${brush.order} later`, disabled: index === entries.length - 1, onclick: () => editor.moveEntry(key, 1) }, "↓")
+                  : null
+              );
+            })
+          )
+        : h("p", { class: "muted" }, "Place Entry markers on the Marker layer.")
+    );
+  };
 
   const renderLayers = () =>
     clear(
@@ -130,10 +275,14 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
 
   renderTools();
   renderLayers();
+  renderSelection();
+  renderEntries();
   renderOptions();
   renderWarnings();
   editor.subscribe((topics: Set<Topic>) => {
     if (topics.has("selection")) renderTools();
+    if (topics.has("area") || topics.has("selection")) renderSelection();
+    if (topics.has("cells") || topics.has("document") || topics.has("mode")) renderEntries();
     if (topics.has("selection") || topics.has("view") || topics.has("cells") || topics.has("document")) renderLayers();
     if (topics.has("view")) renderOptions();
     if (topics.has("cells") || topics.has("document")) renderWarnings();
@@ -143,7 +292,9 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
     "aside",
     { class: "sidebar left" },
     h("section", {}, h("h2", {}, "Tools"), tools),
+    selectionSection,
     h("section", {}, h("h2", {}, "Layers"), layers),
+    entrySection,
     h("section", {}, h("h2", {}, "View"), options),
     h("section", { class: "grow" }, warningTitle, warnings)
   );
@@ -239,6 +390,7 @@ export interface TopBarActions {
   switchMode(mode: ModeId): void;
   newDocument(): void;
   open(): void;
+  add(): void;
   save(): void;
   showCredits(): void;
   showHelp(): void;
@@ -311,6 +463,7 @@ export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement
       { class: "group" },
       h("button", { class: "secondary", onclick: () => actions.newDocument() }, "New"),
       h("button", { class: "secondary", title: "Open .json (Ctrl+O)", onclick: () => actions.open() }, "Open"),
+      h("button", { class: "secondary", title: "Add another file of the same kind into this map (Ctrl+Shift+O)", onclick: () => actions.add() }, "Add"),
       saveButton
     ),
     h("button", { class: "ghost", onclick: () => actions.showHelp(), title: "Shortcuts" }, "?"),
