@@ -12,7 +12,15 @@ export function entityLayer(palette: Palette, id: string): LayerId {
   return findItem(palette, "structure", id) ? "structure" : "object";
 }
 
-export function importStation(text: string, palette: Palette, name: string): MapDocument {
+/** Where editor cell (0, 0) sits on the grid and how big the document is (autosaves keep the editor's own margins). */
+export interface StationLayout {
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+}
+
+export function importStation(text: string, palette: Palette, name: string, layout?: StationLayout): MapDocument {
   const file = parseMapFile(text);
   const grid = mainGrid(file);
   if (!grid) throw new MapFileError("The map has no grid with tiles.");
@@ -21,12 +29,25 @@ export function importStation(text: string, palette: Palette, name: string): Map
   const onGrid = file.entities.filter((entity) => entity.parent === grid.uid && entity.pos && entity.proto !== "");
   const cells: [number, number][] = [...grid.tiles.keys()].map((key) => key.split(",").map(Number) as [number, number]);
   for (const entity of onGrid) cells.push([Math.floor(entity.pos![0]), Math.floor(entity.pos![1])]);
-  if (cells.length === 0) throw new MapFileError("The main grid is empty.");
+  if (cells.length === 0) {
+    if (!layout) throw new MapFileError("The main grid is empty.");
+    cells.push([layout.originX, layout.originY]);
+  }
 
-  const originX = Math.min(...cells.map(([x]) => x));
-  const originY = Math.min(...cells.map(([, y]) => y));
-  const width = Math.max(...cells.map(([x]) => x)) - originX + 1;
-  const height = Math.max(...cells.map(([, y]) => y)) - originY + 1;
+  let originX = Math.min(...cells.map(([x]) => x));
+  let originY = Math.min(...cells.map(([, y]) => y));
+  let width = Math.max(...cells.map(([x]) => x)) - originX + 1;
+  let height = Math.max(...cells.map(([, y]) => y)) - originY + 1;
+  // A saved layout wins when everything still fits in it.
+  if (
+    layout &&
+    layout.originX <= originX &&
+    layout.originY <= originY &&
+    layout.originX + layout.width >= originX + width &&
+    layout.originY + layout.height >= originY + height
+  ) {
+    ({ originX, originY, width, height } = layout);
+  }
   const limit = MODE_INFO.station.maxSize;
   if (width > limit || height > limit) throw new MapFileError(`The station is ${width}×${height} tiles; the editor handles up to ${limit}×${limit}.`);
 

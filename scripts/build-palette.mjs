@@ -142,6 +142,8 @@ function collectTiles(resources, locale) {
       name: locale.get(tile.name) ?? tile.name ?? id,
       category: tile.isSubfloor ? "Subfloor" : "Floor",
       image: path.join(resources, tile.sprite.replace(/^\//, "")),
+      // Number of sprite variants; new tiles in exported maps get one of them, like the game does.
+      flags: Number(tile.variants) > 1 ? { variants: Number(tile.variants) } : undefined,
     });
   }
   return tiles;

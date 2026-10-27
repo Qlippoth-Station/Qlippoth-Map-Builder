@@ -13,6 +13,8 @@ export interface ItemFlags {
   wallMount?: boolean;
   /** IconSmooth key: neighbours with the same key join up visually (walls, windows, tables). */
   smooth?: string;
+  /** Tiles: number of sprite variants. */
+  variants?: number;
 }
 
 export interface PaletteItem {
@@ -59,7 +61,11 @@ export async function loadPalette(): Promise<Palette> {
   const atlas = new Image();
   atlas.src = atlasUrl;
   await atlas.decode();
+  return createPalette(data, atlasUrl, atlas);
+}
 
+/** Builds the palette from palette.json data (also used by Node scripts, with no atlas image). */
+export function createPalette(data: { gameCommit?: string; iconSize: number; atlasColumns: number; items: PaletteItem[]; migrations?: Record<string, string | null> }, atlasUrl: string, atlas: HTMLImageElement): Palette {
   const items: PaletteItem[] = [...data.items, ...MARKERS];
   const byLayer = Object.fromEntries(LAYERS.map((layer) => [layer, new Map<string, PaletteItem>()])) as Palette["byLayer"];
   for (const item of items) byLayer[item.layer]?.set(item.id, item);

@@ -43,7 +43,7 @@ export const MODE_INFO: Record<ModeId, ModeInfo> = {
     maxSize: 512,
     defaultName: "Untitled station",
     defaultSize: [64, 64],
-    fileSuffix: ".station.json",
+    fileSuffix: ".yml",
     hint: "Station maps and station parts",
   },
 };

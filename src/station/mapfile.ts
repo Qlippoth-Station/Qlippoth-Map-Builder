@@ -62,10 +62,23 @@ export interface GridRecord {
   atmosphere: GridAtmosphere | null;
 }
 
+/** A "- proto: X" group of the entities section. */
+export interface ProtoGroup {
+  proto: string;
+  /** "- proto: X" line; the group's header runs until its first entity. */
+  start: number;
+  entities: EntityRecord[];
+}
+
 export interface MapFile {
   lines: string[];
   eol: string;
   format: number;
+  /** "entities:" line. */
+  entitiesLine: number;
+  groups: ProtoGroup[];
+  /** One past the last entity line; what follows (e.g. a "..." end marker) is kept as it is. */
+  entitiesEnd: number;
   tilemap: Map<number, string>;
   /** Line range of the tilemap entries (after "tilemap:"). */
   tilemapLines: [number, number];
@@ -89,6 +102,9 @@ export function parseMapFile(text: string): MapFile {
     lines,
     eol,
     format: 0,
+    entitiesLine: -1,
+    groups: [],
+    entitiesEnd: lines.length,
     tilemap: new Map(),
     tilemapLines: [0, 0],
     entities: [],
@@ -105,6 +121,7 @@ export function parseMapFile(text: string): MapFile {
     else if (line.startsWith("  entityCount: ")) file.entityCountLine = i;
   }
   if (!file.format) throw new MapFileError("The map file has no format version.");
+  let group: ProtoGroup | null = null;
   if (file.format < 6 || file.format > 7) throw new MapFileError(`Map format ${file.format} is not supported (6 and 7 are).`);
 
   // Top-level sections up to the entities.
@@ -119,6 +136,7 @@ export function parseMapFile(text: string): MapFile {
       file.tilemapLines = [start, i];
       i--;
     } else if (line === "entities:") {
+      file.entitiesLine = i;
       i++;
       break;
     }
@@ -180,6 +198,8 @@ export function parseMapFile(text: string): MapFile {
     if (line.startsWith("- proto: ")) {
       finishEntity(i);
       proto = unquote(line.slice(9).trim());
+      group = { proto, start: i, entities: [] };
+      file.groups.push(group);
       continue;
     }
     if (line.startsWith("  - uid: ")) {
@@ -196,14 +216,16 @@ export function parseMapFile(text: string): MapFile {
       };
       file.entities.push(entity);
       file.byUid.set(entity.uid, entity);
+      group?.entities.push(entity);
       continue;
+    }
+    if (line.length > 0 && line[0] !== " ") {
+      // Anything else at the top level (e.g. the "..." document end) ends the entities section.
+      finishEntity(i);
+      file.entitiesEnd = i;
+      break;
     }
     if (!entity) continue;
-    if (line.length > 0 && line[0] !== " ") {
-      // A top-level section after the entities ends the last entity.
-      finishEntity(i);
-      continue;
-    }
     if (line.startsWith("    - type: ")) {
       finishComponent(i);
       component = line.slice(12).trim();
@@ -259,7 +281,16 @@ export function parseMapFile(text: string): MapFile {
       }
     }
   }
-  finishEntity(lines.length);
+  if (entity) {
+    finishEntity(lines.length);
+    file.entitiesEnd = lines.length;
+  }
+  // Trailing empty lines (the final newline) belong to the tail, not to the last entity.
+  const last = file.entities.at(-1);
+  if (last) {
+    while (last.end > last.start + 1 && lines[last.end - 1] === "") last.end--;
+    file.entitiesEnd = Math.min(file.entitiesEnd, last.end);
+  }
   return file;
 }
 

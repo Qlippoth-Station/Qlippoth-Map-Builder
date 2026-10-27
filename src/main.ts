@@ -4,6 +4,8 @@ import { ACTIONS, ACTION_INFO, Editor, SHAPES, SHAPE_INFO } from "./editor";
 import { clear, h } from "./dom";
 import { MODE_INFO, type ModeId } from "./modes";
 import { findItem, loadPalette, type Palette } from "./palette";
+import { readStationAutosave, stationAutosave } from "./station/autosave";
+import { exportStation } from "./station/export";
 import { importStation } from "./station/import";
 import { loadAutosaves, saveAutosave, saveLastMode, type Autosaves } from "./storage";
 import { buildPalettePanel, buildSidebar, buildTopBar } from "./ui";
@@ -22,7 +24,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
     const saved = autosaves.documents[mode];
     if (saved) {
       try {
-        const doc = deserialize(saved);
+        const doc = readStationAutosave(saved, palette) ?? deserialize(saved);
         if (doc.mode === mode) return doc;
       } catch {
         // Start fresh.
@@ -130,7 +132,15 @@ function start(palette: Palette, autosaves: Autosaves): void {
     },
     save() {
       editor.commitFloating();
-      const blob = new Blob([serialize(editor.doc)], { type: "application/json" });
+      // Stations are saved as game map files; domains as editor .json files.
+      let text: string;
+      try {
+        text = editor.mode === "station" ? exportStation(editor.doc, palette).text : serialize(editor.doc);
+      } catch (error) {
+        window.alert(`Could not save: ${(error as Error).message}`);
+        return;
+      }
+      const blob = new Blob([text], { type: editor.mode === "station" ? "text/yaml" : "application/json" });
       const link = h("a", { href: URL.createObjectURL(blob), download: fileName(editor.doc.name, editor.mode) });
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
@@ -203,6 +213,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
       ["Drag selection / Arrows", "Move the selection (Shift + arrow: 10 cells)"],
       ["Enter / Esc", "Place moved content / cancel or deselect"],
       ["Delete", "Erase the selection"],
+      ["T / Shift+T", "Turn the selection, or the item to place (stations), a quarter clockwise / counter-clockwise"],
       ["Ctrl+A / Ctrl+D", "Select all / deselect"],
       ["Space + drag / Middle drag", "Pan"],
       ["Wheel", "Zoom"],
@@ -260,9 +271,14 @@ function start(palette: Palette, autosaves: Autosaves): void {
     window.clearTimeout(pending.get(mode)?.timer);
     const write = () => {
       pending.delete(mode);
-      void saveAutosave(mode, serialize(doc));
+      try {
+        void saveAutosave(mode, mode === "station" ? stationAutosave(doc, palette) : serialize(doc));
+      } catch {
+        // A document that cannot be written now is written on the next change.
+      }
     };
-    pending.set(mode, { timer: window.setTimeout(write, 600), write });
+    // Writing a big station takes ~100 ms, so it waits for a longer pause.
+    pending.set(mode, { timer: window.setTimeout(write, mode === "station" ? 1500 : 600), write });
   };
   const flushAutosaves = () => {
     for (const { timer, write } of [...pending.values()]) {
@@ -338,6 +354,13 @@ function start(palette: Palette, autosaves: Autosaves): void {
           editor.eraseSelection();
         }
         break;
+      case "t": {
+        // Turn the selection (or what is being moved); otherwise turn what the brush places.
+        const direction = event.shiftKey ? -1 : 1;
+        if (editor.floating || (editor.selection && editor.action === "select")) editor.rotateSelection(direction);
+        else if (editor.mode === "station") editor.rotateBrush(direction);
+        break;
+      }
       case "g":
         editor.showGrid = !editor.showGrid;
         editor.emit("view");

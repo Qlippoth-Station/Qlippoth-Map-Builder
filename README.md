@@ -8,7 +8,7 @@ The editor has two modes, switched in the top bar. Both share the same tools, pa
 | Mode | For | Saves |
 |---|---|---|
 | **Domain** | Rift domains and templates for the Q-Gate | `.domain.json` |
-| **Station** | Station maps and station parts (departments) | `.station.json` (working file until game map export lands, see roadmap) |
+| **Station** | Station maps and station parts (departments) | the game's own map `.yml` |
 
 Each mode keeps its own document, undo history and autosave, so switching never loses work.
 
@@ -21,15 +21,31 @@ Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved 
 3. Choose an **action** (Brush, Erase, Select) and a **shape** (Single, Rectangle, Fill); every action works with every shape.
    Right click picks what is under the cursor.
    In station mode the Structure and Object layers hold a stack per cell, like the game: painting adds the item on
-   top, erasing clears the cell. Right click shows everything in a cell in the *Cell* panel.
+   top, erasing clears the cell. Right click shows everything in a cell in the *Cell* panel, where single items can be
+   turned or removed. **T** / **Shift+T** turns what the brush places, or the selection, a quarter turn.
 4. **Select** cells, then drag them (or use the arrow keys) to move them. While something is selected, Brush and Erase
    only touch the selection; the *Selection* panel fills or erases it in one go.
 5. **Add** brings another file of the same mode into the current map, ready to move into place. Build departments or
    rooms one by one and put them together this way. A domain can't be added to a station, or the other way round.
 6. Domains: place at least one **Entry** and one **Qlippoth spot** marker, and choose how players are spread over
    the entries (*Random*, *Order* or *Cohort*). The *Checks* panel lists anything that is missing.
-7. **Save** downloads the file. **Open** takes either kind of file and switches to its mode. It also opens the game's
-   own map files (`Resources/Maps/*.yml`) as stations.
+7. **Save** downloads the file: a `.domain.json` for domains, a game map `.yml` for stations. **Open** takes either
+   kind of file and switches to its mode, including the game's own map files (`Resources/Maps/*.yml`).
+
+### Station maps
+
+Opening a game map and saving it without edits gives back the same file, byte for byte. The editor shows the main
+grid's tiles and the entities standing on it; everything else (other grids, decals, contents of lockers, device
+links and other component data) is kept and written back. Edits change only what they touch:
+
+- moved or turned entities get new Transform lines, removed entities go together with what is inside them;
+- new entities are written with just their prototype and Transform, like the game's spawn menu places them;
+- when tiles change, the grid's chunks and atmosphere are rewritten: existing tiles keep their gas mixture, new tiles
+  get standard air, so the station does not open as vacuum.
+
+A station made from scratch is written into a template map (one station grid with the components the game's station
+grids carry, a `BecomesStation` id from the name). Entities added with **Add** from another map are placed as new
+entities of the same prototype and rotation; their extra data (locker contents, links) belongs to the other map.
 
 Press `?` in the editor for all shortcuts.
 
@@ -52,7 +68,7 @@ Press `?` in the editor for all shortcuts.
 | 1 | Mode system (domain / station), per-mode autosave in IndexedDB | ✅ |
 | 2 | Palette v2: classification by component instead of folder, markers, fills, rotation metadata, game id renames | ✅ |
 | 3a | Import game map `.yml` files (fast line scanner), several entities per cell, rotation display, chunk-cached rendering, Cell panel | ✅ |
-| 3b | Several entities per cell, rotation, game map `.yml` export (lossless round trip), *Draft* profile | ⏳ |
+| 3b | Editing stations: turning (T), Cell panel turn/remove, turning selections; game map `.yml` export with a lossless round trip | ✅ |
 | 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ⏳ |
 | 5 | *Exportable* profile: full station checks, `gameMap` prototype export | ⏳ |
 | 6 | Modules (departments) and project files | ⏳ |
@@ -68,6 +84,9 @@ npm install
 npm run palette -- --game ../Qlippoth-station-14   # builds public/palette from the game files
 npm run dev
 ```
+
+`npm run test:roundtrip -- --game ../Qlippoth-station-14` imports and exports every station map of the game (they must
+come back byte for byte) and checks an edited map. CI runs it too.
 
 `npm run palette:coverage -- --game ../Qlippoth-station-14` reports how many of the prototypes and tiles used by the
 game's station maps (`Resources/Maps/*.yml`) the palette knows. CI runs it and fails below 95% on any map.
@@ -92,6 +111,8 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | `src/modes.ts` | Mode definitions: layers, file suffix, defaults |
 | `src/document.ts` | Document model and file formats |
 | `src/storage.ts` | Autosave (IndexedDB, one slot per mode) |
+| `src/station/` | Game map reader (`mapfile.ts`), import, export, new-station template, station autosave |
+| `scripts/station-roundtrip.ts` | Round-trip test of station import/export against the game's maps |
 | `src/editor.ts` | Editor state, edits, undo/redo, checks |
 | `src/view.ts` | Canvas rendering, camera and tool input |
 | `src/ui.ts` | Side panels and top bar |

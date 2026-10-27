@@ -131,15 +131,20 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
     if (!at) return;
     const [x, y] = at;
     const rows = editor.layers.flatMap((layer) =>
-      itemsOf(editor.get(layer, x, y)).map((brush) => {
+      itemsOf(editor.get(layer, x, y)).map((brush, index) => {
         const item = findItem(editor.palette, layer, brush.id);
         const degrees = brush.rot ? Math.round((brush.rot * 180) / Math.PI) : 0;
+        const name = item?.name ?? brush.id;
         return h(
           "li",
           { title: `${brush.id}${brush.uid !== undefined ? `\nuid ${brush.uid}` : ""}` },
           icon(editor.palette, item, brush.id),
-          h("span", { class: "cell-item-name" }, item?.name ?? brush.id, h("small", {}, LAYER_NAMES[layer])),
-          degrees ? h("span", { class: "rot" }, `${degrees}°`) : null
+          h("span", { class: "cell-item-name" }, name, h("small", {}, LAYER_NAMES[layer])),
+          degrees ? h("span", { class: "rot" }, `${degrees}°`) : null,
+          editor.stacks(layer)
+            ? h("button", { class: "ghost", title: "Turn clockwise", "aria-label": `Turn ${name} clockwise`, onclick: () => editor.rotateCellItem(layer, x, y, index, 1) }, "⟳")
+            : null,
+          h("button", { class: "ghost", title: "Remove", "aria-label": `Remove ${name}`, onclick: () => editor.removeCellItem(layer, x, y, index) }, "✕")
         );
       })
     );
@@ -352,6 +357,8 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
     const id = editor.selected[editor.activeLayer];
     const item = id ? findItem(palette, editor.activeLayer, id) : undefined;
     const notes = item ? itemNotes(item) : [];
+    const rot = editor.selectedBrush()?.rot;
+    if (rot) notes.unshift(`Placed turned ${Math.round((rot * 180) / Math.PI)}° (T)`);
     clear(
       selected,
       icon(palette, item, id ?? undefined),

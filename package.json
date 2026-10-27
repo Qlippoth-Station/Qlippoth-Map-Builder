@@ -10,10 +10,12 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "palette": "node scripts/build-palette.mjs",
-    "palette:coverage": "node scripts/palette-coverage.mjs"
+    "palette:coverage": "node scripts/palette-coverage.mjs",
+    "test:roundtrip": "tsx scripts/station-roundtrip.ts"
   },
   "devDependencies": {
     "pngjs": "^7.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "yaml": "^2.9.1"

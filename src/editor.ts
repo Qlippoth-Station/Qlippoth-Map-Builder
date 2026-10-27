@@ -9,7 +9,9 @@ import {
   fromItems,
   inBounds,
   itemsOf,
+  normalizeAngle,
   parseKey,
+  QUARTER_TURN,
   sameBrush,
   type Brush,
   type EntrySettings,
@@ -115,6 +117,8 @@ export class Editor {
   allLayers = true;
   /** Cell shown in the Cell panel (set by right click). */
   inspected: [number, number] | null = null;
+  /** Rotation of what the brush places on stacking layers, in radians (game convention: counter-clockwise). */
+  brushRot = 0;
   /** Increases on every edit; compared against the last saved value to know about unsaved work. */
   revision = 0;
   savedRevision = 0;
@@ -239,7 +243,16 @@ export class Editor {
 
   selectedBrush(): Item | null {
     const id = this.selected[this.activeLayer];
-    return id ? { kind: "fixed", id } : null;
+    if (!id) return null;
+    const item: Item = { kind: "fixed", id };
+    if (this.brushRot && this.stacks(this.activeLayer)) item.rot = this.brushRot;
+    return item;
+  }
+
+  /** Turns what the brush places by a quarter: 1 = clockwise, -1 = counter-clockwise. */
+  rotateBrush(direction: 1 | -1): void {
+    this.brushRot = normalizeAngle(this.brushRot - direction * QUARTER_TURN);
+    this.emit("selection");
   }
 
   inspect(x: number, y: number): void {
@@ -547,6 +560,21 @@ export class Editor {
     this.endStroke();
   }
 
+  // ---- Single items (Cell panel) ---------------------------------------------------------------
+
+  /** Turns one item of a cell's stack by a quarter: 1 = clockwise, -1 = counter-clockwise. */
+  rotateCellItem(layer: LayerId, x: number, y: number, index: number, direction: 1 | -1): void {
+    const items = [...itemsOf(this.get(layer, x, y))];
+    if (!items[index]) return;
+    items[index] = withRotation(items[index], (items[index].rot ?? 0) - direction * QUARTER_TURN);
+    this.set(layer, x, y, fromItems(items));
+  }
+
+  removeCellItem(layer: LayerId, x: number, y: number, index: number): void {
+    const items = itemsOf(this.get(layer, x, y)).filter((_, i) => i !== index);
+    this.set(layer, x, y, fromItems(items));
+  }
+
   // ---- Floating content ------------------------------------------------------------------------
 
   /** Picks up the selected cells so they can be moved. Returns false when nothing is selected. */
@@ -582,6 +610,41 @@ export class Editor {
   nudge(dx: number, dy: number): void {
     if (!this.liftSelection()) return;
     this.moveFloating(this.floating!.x + dx, this.floating!.y + dy);
+  }
+
+  /**
+   * Turns the selection (picking it up first) a quarter around its middle: 1 = clockwise, -1 = counter-clockwise.
+   * Entities on stacking layers turn with it.
+   */
+  rotateSelection(direction: 1 | -1): void {
+    if (!this.liftSelection()) return;
+    const floating = this.floating!;
+    const points = [...floating.mask].map(parseKey);
+    const width = Math.max(...points.map(([x]) => x)) + 1;
+    const height = Math.max(...points.map(([, y]) => y)) + 1;
+    const turn = (key: string): string => {
+      const [x, y] = parseKey(key);
+      return direction === 1 ? cellKey(y, width - 1 - x) : cellKey(height - 1 - y, x);
+    };
+    const cells = new Map<LayerId, Map<string, Brush>>();
+    for (const [layer, layerCells] of floating.cells) {
+      const turned = new Map<string, Brush>();
+      for (const [key, brush] of layerCells) {
+        const items = this.stacks(layer) ? itemsOf(brush).map((item) => withRotation(item, (item.rot ?? 0) - direction * QUARTER_TURN)) : itemsOf(brush);
+        turned.set(turn(key), fromItems(items)!);
+      }
+      cells.set(layer, turned);
+    }
+    floating.cells = cells;
+    floating.mask = new Set([...floating.mask].map(turn));
+    // Turn around the middle (two turns back undo it exactly), but stay inside the map when it fits.
+    floating.x += Math.trunc((width - height) / 2);
+    floating.y += Math.trunc((height - width) / 2);
+    if (height <= this.doc.width) floating.x = Math.min(Math.max(floating.x, 0), this.doc.width - height);
+    if (width <= this.doc.height) floating.y = Math.min(Math.max(floating.y, 0), this.doc.height - width);
+    // A turned selection always changes the map when placed, even where it was picked up.
+    floating.fromX = Number.NaN;
+    this.emit("area", "cells", "history");
   }
 
   floatingContains(x: number, y: number): boolean {
@@ -739,4 +802,11 @@ function invert(change: Change): Change {
     case "entry":
       return { ...change, before: change.after, after: change.before } as Change;
   }
+}
+
+/** The item with a rotation (normalized; no rot field when it is 0). */
+function withRotation(item: Item, rot: number): Item {
+  const { rot: _, ...rest } = item;
+  const value = normalizeAngle(rot);
+  return value ? { ...rest, rot: value } : rest;
 }

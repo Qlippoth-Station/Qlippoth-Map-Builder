@@ -106,6 +106,17 @@ export function sameBrush(a: Brush | null | undefined, b: Brush | null | undefin
   return ia.length === ib.length && ia.every((item, index) => sameItem(item, ib[index]));
 }
 
+/** Angle in (-π, π]; 0 when it is a whole turn. */
+export function normalizeAngle(angle: number): number {
+  let value = angle % (2 * Math.PI);
+  if (value > Math.PI) value -= 2 * Math.PI;
+  if (value <= -Math.PI) value += 2 * Math.PI;
+  return Math.abs(value) < 1e-9 ? 0 : value;
+}
+
+/** A quarter turn clockwise (-1) or counter-clockwise (1) of a game angle. */
+export const QUARTER_TURN = Math.PI / 2;
+
 /** The items of a cell, bottom first. */
 export function itemsOf(brush: Brush | null | undefined): Item[] {
   if (!brush) return [];
