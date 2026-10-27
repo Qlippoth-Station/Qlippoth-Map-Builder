@@ -47,7 +47,7 @@ Press `?` in the editor for all shortcuts.
 | Phase | Contents | Status |
 |---|---|---|
 | 1 | Mode system (domain / station), per-mode autosave in IndexedDB | ✅ |
-| 2 | Palette v2: classification by component instead of folder, markers, fills, rotation metadata | ⏳ |
+| 2 | Palette v2: classification by component instead of folder, markers, fills, rotation metadata, game id renames | ✅ |
 | 3a | Import game map `.yml` files (fast line scanner), chunk-cached rendering | ⏳ |
 | 3b | Several entities per cell, rotation, game map `.yml` export (lossless round trip), *Draft* profile | ⏳ |
 | 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ⏳ |
@@ -66,6 +66,14 @@ npm run palette -- --game ../Qlippoth-station-14   # builds public/palette from 
 npm run dev
 ```
 
+`npm run palette:coverage -- --game ../Qlippoth-station-14` reports how many of the prototypes and tiles used by the
+game's station maps (`Resources/Maps/*.yml`) the palette knows. CI runs it and fails below 95% on any map.
+
+The palette lists every tile and every non-abstract entity prototype, wherever it is under `Resources/Prototypes`.
+Walls, windows, doors, grilles and girders go to the Structure layer (by their `Wall`/`Window` tags, `Door` component
+or parent), everything else to the Object layer. Entities the game hides from its spawn menu are known but only shown
+when searched for. Renamed ids from the game's `Resources/migration.yml` resolve to their new id.
+
 `npm run build` type-checks and produces `dist/`.
 
 The palette (`public/palette/`) is generated, not committed. CI checks out the game repository, rebuilds the palette
@@ -77,6 +85,7 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | Path | What |
 |---|---|
 | `scripts/build-palette.mjs` | Reads tile and entity prototypes, resolves inheritance, builds `palette.json`, `atlas.png`, `credits.json` |
+| `scripts/palette-coverage.mjs` | Checks the palette against the game's station maps |
 | `src/modes.ts` | Mode definitions: layers, file suffix, defaults |
 | `src/document.ts` | Document model and file formats |
 | `src/storage.ts` | Autosave (IndexedDB, one slot per mode) |

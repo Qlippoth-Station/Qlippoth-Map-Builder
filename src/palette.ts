@@ -1,15 +1,31 @@
 import { LAYERS, type LayerId } from "./document";
 
+/** What the game data says about an entity, read when the palette is built (see scripts/build-palette.mjs). */
+export interface ItemFlags {
+  /** Hidden from the game's spawn menu: known to the editor but only listed when searched for. */
+  hidden?: boolean;
+  /** In the DoNotMap category: the game does not want it placed on maps. */
+  noMap?: boolean;
+  /** Spawn menu placement mode, e.g. "SnapgridCenter" for things that sit in the middle of a tile. */
+  placement?: string;
+  /** Sprite directions (4 or 8) when the sprite turns with the entity. */
+  directions?: number;
+  wallMount?: boolean;
+  /** IconSmooth key: neighbours with the same key join up visually (walls, windows, tables). */
+  smooth?: string;
+}
+
 export interface PaletteItem {
   id: string;
   name: string;
   layer: LayerId;
   category: string;
-  /** Index into the atlas. Markers have no icon and are drawn from color + glyph instead. */
+  /** Index into the atlas, or null: markers are drawn from color + glyph, entities without a sprite as a placeholder. */
   icon: number | null;
   color?: string;
   glyph?: string;
   description?: string;
+  flags?: ItemFlags;
 }
 
 export interface Palette {
@@ -20,6 +36,8 @@ export interface Palette {
   atlas: HTMLImageElement;
   items: PaletteItem[];
   byLayer: Record<LayerId, Map<string, PaletteItem>>;
+  /** The game's renamed entity ids: old id -> new id, or null when the game deletes it on load. */
+  migrations: Map<string, string | null>;
 }
 
 /** Editor-only markers. They are not game entities; the runtime generator reads them. */
@@ -54,7 +72,29 @@ export async function loadPalette(): Promise<Palette> {
     atlas,
     items,
     byLayer,
+    migrations: new Map(Object.entries(data.migrations ?? {})),
   };
+}
+
+/** The palette item for an id on a layer, following the game's renames. */
+export function findItem(palette: Palette, layer: LayerId, id: string): PaletteItem | undefined {
+  const item = palette.byLayer[layer].get(id);
+  if (item) return item;
+  const renamed = palette.migrations.get(id);
+  return renamed ? palette.byLayer[layer].get(renamed) : undefined;
+}
+
+/** Short notes about an item for the palette panel. */
+export function itemNotes(item: PaletteItem): string[] {
+  const flags = item.flags ?? {};
+  return [
+    flags.directions ? `${flags.directions} directions` : null,
+    flags.wallMount ? "Wall mount" : null,
+    flags.smooth ? `Joins with "${flags.smooth}"` : null,
+    flags.hidden ? "Hidden in the spawn menu" : null,
+    flags.noMap ? "Do not map" : null,
+    item.layer !== "marker" && item.icon === null ? "No sprite" : null,
+  ].filter((note): note is string => note !== null);
 }
 
 export function iconOrigin(palette: Palette, icon: number): [number, number] {

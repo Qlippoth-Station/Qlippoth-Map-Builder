@@ -7,8 +7,14 @@
 //   public/palette/atlas.png      one 32x32 icon per palette entry
 //   public/palette/credits.json   license/copyright of every sprite used
 //
-// Only what the editor needs is read: tile prototypes and entity prototypes with a sprite.
-// Inheritance is resolved field by field per component, which is close enough to the game for icons.
+// palette.json also carries the game's Resources/migration.yml (old entity id -> new id, or null when the game
+// deletes it on load), so maps using renamed ids still resolve.
+//
+// Every tile prototype and every non-abstract entity prototype is listed, wherever it lives under Resources/Prototypes
+// (forks often use their own folders, and fills live under Catalog/). Entities are sorted into editor layers by their
+// components, not their folder. Entities the spawn menu hides are listed but marked hidden: the editor still knows them
+// (game maps use them) but does not offer them in the palette until searched for.
+// Inheritance is resolved field by field per component, which is close enough to the game for icons and flags.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -19,18 +25,30 @@ import { PNG } from "pngjs";
 const ICON = 32;
 const OUT_DIR = path.resolve("public/palette");
 
-// Which entity folders go to which editor layer. First match wins; anything else is skipped.
-const ENTITY_LAYERS = [
-  { prefix: "Structures/Walls", layer: "structure" },
-  { prefix: "Structures/Doors", layer: "structure" },
-  { prefix: "Structures/Windows", layer: "structure" },
-  { prefix: "Structures/", layer: "object" },
-  { prefix: "Objects/", layer: "object" },
-  { prefix: "Qlippoths/", layer: "object" },
-];
+const PALETTE_VERSION = 2;
 
-// Entities in these categories never show up in the in-game spawn menu, so they are left out here too.
-const HIDDEN_CATEGORIES = new Set(["HideSpawnMenu", "DoNotMap", "Debug"]);
+// Ids (and their descendants) that are part of the wall line even without a Wall/Window tag or Door component.
+const STRUCTURE_ANCESTORS = new Set(["Girder", "Grille", "GrilleBroken", "BaseGirder", "BaseGrille"]);
+
+// Categories the engine defines itself (not in the game's prototypes): hidden, and not passed on to children.
+const ENGINE_CATEGORIES = { HideSpawnMenu: { hide: true, inheritable: false } };
+
+// Components whose C# class carries [EntityCategory(...)]: the engine puts every entity with them in that category.
+// The C# sources are not read here, so the ones that hide entities are listed by hand (from Content.Shared/Server).
+const COMPONENT_CATEGORIES = {
+  Action: "Actions",
+  InstantAction: "Actions",
+  WorldTargetAction: "Actions",
+  EntityTargetAction: "Actions",
+  TargetAction: "Actions",
+  ConfirmableAction: "Actions",
+  ActionUpgrade: "Actions",
+  GameRule: "GameRules",
+  Objective: "Objectives",
+  MindRole: "Roles",
+  StatusEffect: "StatusEffects",
+  StatusEffectAlert: "StatusEffects",
+};
 
 function parseArgs() {
   const index = process.argv.indexOf("--game");
@@ -131,11 +149,23 @@ function collectTiles(resources, locale) {
 
 // ---- Entities -----------------------------------------------------------------------------------
 
+function readEntityCategories(protoRoot) {
+  const categories = { ...ENGINE_CATEGORIES };
+  for (const file of walk(protoRoot, ".yml")) {
+    for (const proto of readYamlDocs(file)) {
+      if (proto?.type !== "entityCategory" || !proto.id) continue;
+      categories[proto.id] = { hide: proto.hideSpawnMenu === true, inheritable: proto.inheritable !== false };
+    }
+  }
+  return categories;
+}
+
 function collectEntities(resources) {
-  const entityRoot = path.join(resources, "Prototypes", "Entities");
+  const protoRoot = path.join(resources, "Prototypes");
+  const categoryInfo = readEntityCategories(protoRoot);
   const byId = new Map();
-  for (const file of walk(entityRoot, ".yml")) {
-    const relative = toPosix(path.relative(entityRoot, file));
+  for (const file of walk(protoRoot, ".yml")) {
+    const relative = toPosix(path.relative(protoRoot, file));
     for (const proto of readYamlDocs(file)) {
       if (proto?.type === "entity" && proto.id) byId.set(proto.id, { proto, relative });
     }
@@ -145,20 +175,26 @@ function collectEntities(resources) {
   const resolve = (id, seen = new Set()) => {
     if (cache.has(id)) return cache.get(id);
     const entry = byId.get(id);
-    if (!entry || seen.has(id)) return { components: {} };
+    if (!entry || seen.has(id)) return { components: {}, categories: new Set(), ancestors: new Set() };
     seen.add(id);
 
-    const result = { components: {} };
+    const result = { components: {}, categories: new Set(), ancestors: new Set() };
     for (const parent of parents(entry.proto)) {
       const inherited = resolve(parent, seen);
       result.name ??= inherited.name;
       result.suffix ??= inherited.suffix;
+      result.placement ??= inherited.placement;
+      result.ancestors.add(parent);
+      for (const ancestor of inherited.ancestors) result.ancestors.add(ancestor);
+      for (const category of inherited.categories) if (categoryInfo[category]?.inheritable !== false) result.categories.add(category);
       for (const [type, fields] of Object.entries(inherited.components)) {
         result.components[type] = { ...result.components[type], ...fields };
       }
     }
     if (entry.proto.name) result.name = entry.proto.name;
     if (entry.proto.suffix) result.suffix = entry.proto.suffix;
+    if (entry.proto.placement) result.placement = entry.proto.placement;
+    for (const category of entry.proto.categories ?? []) result.categories.add(category);
     for (const component of entry.proto.components ?? []) {
       if (!component?.type) continue;
       const { type, ...fields } = component;
@@ -171,24 +207,59 @@ function collectEntities(resources) {
   const entities = [];
   for (const [id, { proto, relative }] of byId) {
     if (proto.abstract) continue;
-    if ((proto.categories ?? []).some((category) => HIDDEN_CATEGORIES.has(category))) continue;
-    const mapping = ENTITY_LAYERS.find((rule) => relative.startsWith(rule.prefix));
-    if (!mapping) continue;
-
     const resolved = resolve(id);
-    const icon = findIcon(resources, resolved.components);
-    if (!icon) continue;
+    const components = resolved.components;
+    const tags = new Set(components.Tag?.tags ?? []);
+    const categories = [...resolved.categories, ...Object.keys(components).map((type) => COMPONENT_CATEGORIES[type]).filter(Boolean)];
+    const icon = findIcon(resources, components);
 
-    const folders = relative.split("/");
+    const name = stripMarkup(resolved.name ?? "") || id;
     entities.push({
       id,
-      name: resolved.suffix ? `${resolved.name ?? id} (${resolved.suffix})` : resolved.name ?? id,
-      layer: mapping.layer,
-      category: folders.slice(0, Math.min(2, folders.length - 1)).join("/"),
-      ...icon,
+      name: resolved.suffix ? `${name} (${resolved.suffix})` : name,
+      layer: entityLayer(id, components, tags, resolved.ancestors),
+      category: displayCategory(relative),
+      ...(icon ?? {}),
+      flags: compact({
+        hidden: categories.some((category) => categoryInfo[category]?.hide) || undefined,
+        noMap: categories.includes("DoNotMap") || undefined,
+        // Spawn menu placement: SnapgridCenter means it sits in the middle of a tile (anchored structures, machines).
+        placement: typeof resolved.placement?.mode === "string" ? resolved.placement.mode : undefined,
+        directions: icon?.directions > 1 ? icon.directions : undefined,
+        wallMount: "WallMount" in components || undefined,
+        smooth: typeof components.IconSmooth?.key === "string" ? components.IconSmooth.key : undefined,
+      }),
     });
   }
   return entities;
+}
+
+/** Walls, windows, doors, grilles and girders form the structure layer; everything else is an object. */
+function entityLayer(id, components, tags, ancestors) {
+  if (tags.has("Wall") || tags.has("Window") || "Door" in components) return "structure";
+  if (STRUCTURE_ANCESTORS.has(id) || [...ancestors].some((ancestor) => STRUCTURE_ANCESTORS.has(ancestor))) return "structure";
+  return "object";
+}
+
+/**
+ * Category shown in the palette: the first two folders under Prototypes, without a fork's own top folder
+ * (e.g. "_Fork/Entities/Structures/Walls/x.yml" becomes "Structures/Walls") and without the "Entities/" prefix.
+ */
+function displayCategory(relative) {
+  let folders = relative.split("/").slice(0, -1);
+  if (folders[0]?.startsWith("_")) folders = folders.slice(1);
+  if (folders[0] === "Entities") folders = folders.slice(1);
+  return folders.slice(0, 2).join("/") || "Other";
+}
+
+/** Names may carry rich text tags such as [color=green]...[/color]. */
+function stripMarkup(text) {
+  return String(text).replace(/\[\/?[a-z]+(=[^\]]*)?\]/gi, "").trim();
+}
+
+function compact(object) {
+  const entries = Object.entries(object).filter(([, value]) => value !== undefined);
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 // Icon component wins over Sprite; a state that is missing falls back to the first layer, then to the first RSI state.
@@ -213,9 +284,21 @@ function findIcon(resources, components) {
   if (!fs.existsSync(image)) return null;
   return {
     image,
+    directions: meta.states.find((entry) => entry.name === state)?.directions ?? 1,
     frame: meta.size ?? { x: ICON, y: ICON },
     credit: { source: toPosix(path.join("Textures", rsi)), license: meta.license, copyright: meta.copyright },
   };
+}
+
+// ---- Migrations ---------------------------------------------------------------------------------
+
+function readMigrations(resources) {
+  const file = path.join(resources, "migration.yml");
+  if (!fs.existsSync(file)) return {};
+  const data = YAML.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, ""), { logLevel: "silent" }) ?? {};
+  const migrations = {};
+  for (const [from, to] of Object.entries(data)) migrations[from] = typeof to === "string" && to.trim() !== "" && to !== "null" ? to : null;
+  return migrations;
 }
 
 // ---- Tile credits -------------------------------------------------------------------------------
@@ -234,37 +317,56 @@ function tileCredits(resources) {
 
 // ---- Atlas --------------------------------------------------------------------------------------
 
+// Items without a readable sprite are kept (the editor must still know their ids) with icon: null.
 function buildAtlas(items) {
-  const columns = Math.max(1, Math.ceil(Math.sqrt(items.length)));
-  const rows = Math.max(1, Math.ceil(items.length / columns));
+  const pngCache = new Map();
+  const readPng = (image) => {
+    if (!image) return null;
+    if (!pngCache.has(image)) {
+      try {
+        pngCache.set(image, PNG.sync.read(trimAfterEnd(fs.readFileSync(image))));
+      } catch {
+        pngCache.set(image, null);
+      }
+    }
+    return pngCache.get(image);
+  };
+  const withIcon = items.filter((item) => readPng(item.image)).length;
+  const columns = Math.max(1, Math.ceil(Math.sqrt(withIcon)));
+  const rows = Math.max(1, Math.ceil(withIcon / columns));
   const atlas = new PNG({ width: columns * ICON, height: rows * ICON });
   const placed = [];
-  const pngCache = new Map();
+  let index = 0;
 
   for (const item of items) {
-    let source = pngCache.get(item.image);
-    if (source === undefined) {
-      try {
-        source = PNG.sync.read(fs.readFileSync(item.image));
-      } catch {
-        source = null;
-      }
-      pngCache.set(item.image, source);
+    const { image, frame, directions, ...rest } = item;
+    const source = readPng(image);
+    if (!source) {
+      placed.push({ ...rest, icon: null });
+      continue;
     }
-    if (!source) continue;
 
-    const index = placed.length;
     const ax = (index % columns) * ICON;
     const ay = Math.floor(index / columns) * ICON;
     // First frame (south direction, frame 0) is the top-left cell of the sheet.
     const fw = Math.min(item.frame?.x ?? ICON, source.width);
     const fh = Math.min(item.frame?.y ?? ICON, source.height);
     blitScaled(source, fw, fh, atlas, ax, ay);
-
-    const { image, frame, ...rest } = item;
-    placed.push({ ...rest, icon: index });
+    placed.push({ ...rest, icon: index++ });
   }
   return { atlas, columns, placed };
+}
+
+// Some game sprites carry extra bytes after the IEND chunk. The game ignores them; pngjs refuses the file.
+function trimAfterEnd(buffer) {
+  let offset = 8;
+  while (offset + 8 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const end = offset + 12 + length;
+    if (buffer.toString("ascii", offset + 4, offset + 8) === "IEND") return buffer.subarray(0, end);
+    offset = end;
+  }
+  return buffer;
 }
 
 // Nearest-neighbour fit of the frame into a 32x32 cell, keeping aspect ratio and centering it.
@@ -322,11 +424,12 @@ fs.writeFileSync(path.join(OUT_DIR, "atlas.png"), PNG.sync.write(atlas));
 fs.writeFileSync(
   path.join(OUT_DIR, "palette.json"),
   JSON.stringify({
-    version: 1,
+    version: PALETTE_VERSION,
     gameCommit: gameCommit(game),
     iconSize: ICON,
     atlasColumns: columns,
     items: placed.map(({ credit, ...item }) => item),
+    migrations: readMigrations(resources),
   })
 );
 fs.writeFileSync(
@@ -336,4 +439,9 @@ fs.writeFileSync(
 
 for (const file of unreadable) console.warn(`Skipped unreadable YAML: ${toPosix(path.relative(game, file))}`);
 const count = (layer) => placed.filter((item) => item.layer === layer).length;
-console.log(`Palette: ${count("floor")} tiles, ${count("structure")} structures, ${count("object")} objects -> ${toPosix(path.relative(process.cwd(), OUT_DIR))}`);
+const hidden = placed.filter((item) => item.flags?.hidden).length;
+const noIcon = placed.filter((item) => item.icon === null).length;
+console.log(
+  `Palette: ${count("floor")} tiles, ${count("structure")} structures, ${count("object")} objects ` +
+    `(${hidden} hidden from the palette list, ${noIcon} without a sprite) -> ${toPosix(path.relative(process.cwd(), OUT_DIR))}`
+);

@@ -14,7 +14,7 @@ import {
   type MapDocument,
 } from "./document";
 import { MODE_INFO, type ModeId } from "./modes";
-import type { Palette } from "./palette";
+import { findItem, type Palette } from "./palette";
 
 /** What a click does. */
 export const ACTIONS = ["brush", "erase", "select"] as const;
@@ -645,12 +645,19 @@ export class Editor {
     const warnings: Warning[] = [];
     if (this.mode === "domain") this.validateDomain(warnings);
 
+    // One warning per id and layer, pointing at its first cell.
     for (const layer of this.layers) {
-      const missing = new Map<string, [number, number]>();
-      for (const [key, brush] of this.doc.layers[layer]) {
-        if (!this.palette.byLayer[layer].has(brush.id) && !missing.has(brush.id)) missing.set(brush.id, parseKey(key));
+      const firstSeen = new Map<string, [number, number]>();
+      for (const [key, brush] of this.doc.layers[layer]) if (!firstSeen.has(brush.id)) firstSeen.set(brush.id, parseKey(key));
+      for (const [id, at] of firstSeen) {
+        const item = this.palette.byLayer[layer].get(id);
+        if (item?.flags?.noMap) warnings.push({ message: `"${id}" is marked Do not map in the game.`, at });
+        if (item) continue;
+        const renamed = this.palette.migrations.get(id);
+        if (renamed === null) warnings.push({ message: `"${id}" was removed from the game; it disappears when the map loads.`, at });
+        else if (renamed && findItem(this.palette, layer, id)) warnings.push({ message: `"${id}" was renamed to "${renamed}" in the game.`, at });
+        else warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette).`, at });
       }
-      for (const [id, at] of missing) warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette).`, at });
     }
     return warnings;
   }

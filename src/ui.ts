@@ -2,7 +2,7 @@ import { ENTRY_MODES, LAYER_NAMES, MAX_COHORT, MAX_SIZE, MIN_SIZE, parseKey, typ
 import { ACTIONS, ACTION_INFO, SHAPES, SHAPE_INFO, type Editor, type Topic } from "./editor";
 import { clear, h } from "./dom";
 import { MODES, MODE_INFO, type ModeId } from "./modes";
-import { iconOrigin, type Palette, type PaletteItem } from "./palette";
+import { findItem, iconOrigin, itemNotes, type Palette, type PaletteItem } from "./palette";
 import type { MapView } from "./view";
 
 const PALETTE_LIMIT = 400;
@@ -20,6 +20,7 @@ export function icon(palette: Palette, item: PaletteItem | undefined, id?: strin
     element.style.backgroundColor = item.color ?? "";
     return element;
   }
+  if (item) return h("span", { class: "icon placeholder", title: "No sprite" }, item.name.charAt(0).toUpperCase());
   return h("span", { class: "icon unknown", title: id ? `Unknown id: ${id}` : "Empty" }, id ? "?" : "");
 }
 
@@ -99,7 +100,7 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
       return;
     }
     const brush = editor.selectedBrush();
-    const item = brush ? editor.palette.byLayer[editor.activeLayer].get(brush.id) : undefined;
+    const item = brush ? findItem(editor.palette, editor.activeLayer, brush.id) : undefined;
     clear(
       selectionSection,
       h("h2", {}, `Selection · ${editor.selection!.size} cells`),
@@ -314,13 +315,14 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
   let shownLayer: LayerId | null = null;
 
   const renderCategories = () => {
-    const categories = [...new Set(palette.items.filter((item) => item.layer === editor.activeLayer).map((item) => item.category))].sort();
+    const categories = [...new Set(palette.items.filter((item) => item.layer === editor.activeLayer && !item.flags?.hidden).map((item) => item.category))].sort();
     clear(category, h("option", { value: "" }, "All categories"), ...categories.map((name) => h("option", { value: name }, name)));
   };
 
   const renderSelected = () => {
     const id = editor.selected[editor.activeLayer];
-    const item = id ? palette.byLayer[editor.activeLayer].get(id) : undefined;
+    const item = id ? findItem(palette, editor.activeLayer, id) : undefined;
+    const notes = item ? itemNotes(item) : [];
     clear(
       selected,
       icon(palette, item, id ?? undefined),
@@ -329,7 +331,8 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
         { class: "selected-text" },
         h("strong", {}, item?.name ?? (id ? id : "Nothing selected")),
         h("code", {}, id ?? "Pick an item below"),
-        item?.description ? h("p", {}, item.description) : null
+        item?.description ? h("p", {}, item.description) : null,
+        notes.length ? h("ul", { class: "notes" }, ...notes.map((note) => h("li", {}, note))) : null
       )
     );
   };
@@ -339,6 +342,8 @@ export function buildPalettePanel(editor: Editor): HTMLElement {
     const matches = palette.items.filter(
       (item) =>
         item.layer === editor.activeLayer &&
+        // Items the game hides from its spawn menu are only listed when searched for.
+        (!item.flags?.hidden || query !== "") &&
         (!category.value || item.category === category.value) &&
         (!query || item.name.toLowerCase().includes(query) || item.id.toLowerCase().includes(query))
     );

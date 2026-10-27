@@ -1,6 +1,6 @@
 import { ENTRY_ID, cellKey, inBounds, parseKey, type Brush, type LayerId } from "./document";
 import type { Editor, SelectOp } from "./editor";
-import { iconOrigin } from "./palette";
+import { findItem, iconOrigin } from "./palette";
 
 const BASE_CELL = 32;
 const MIN_ZOOM = 0.25;
@@ -169,7 +169,7 @@ export class MapView {
   private drawBrush(layer: LayerId, brush: Brush, sx: number, sy: number, size: number): void {
     const { ctx } = this;
     const palette = this.editor.palette;
-    const item = palette.byLayer[layer].get(brush.id);
+    const item = findItem(palette, layer, brush.id);
 
     if (item?.icon != null) {
       const [ax, ay] = iconOrigin(palette, item.icon);
@@ -191,6 +191,20 @@ export class MapView {
       // Entries show their place in the order when the order matters.
       const ordered = brush.id === ENTRY_ID && brush.order !== undefined && this.editor.doc.entry.mode !== "random";
       ctx.fillText(ordered ? `${item.glyph}${brush.order}` : item.glyph, sx + size / 2, sy + size / 2 + 1, size - 2);
+      return;
+    }
+
+    if (item) {
+      // Known entity without a sprite: neutral tile with its initial.
+      const inset = size * 0.12;
+      ctx.fillStyle = "rgba(140, 145, 160, 0.55)";
+      roundRect(ctx, sx + inset, sy + inset, size - inset * 2, size - inset * 2, size * 0.18);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = `600 ${Math.max(8, size * 0.4)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(item.name.charAt(0).toUpperCase(), sx + size / 2, sy + size / 2 + 1);
       return;
     }
 
