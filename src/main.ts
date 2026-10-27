@@ -3,7 +3,7 @@ import { LAYER_NAMES, clampSize, createDocument, deserialize, serialize, type Ma
 import { ACTIONS, ACTION_INFO, Editor, SHAPES, SHAPE_INFO } from "./editor";
 import { clear, h } from "./dom";
 import { MODE_INFO, type ModeId } from "./modes";
-import { loadPalette, type Palette } from "./palette";
+import { findItem, loadPalette, type Palette } from "./palette";
 import { loadAutosaves, saveAutosave, saveLastMode, type Autosaves } from "./storage";
 import { buildPalettePanel, buildSidebar, buildTopBar } from "./ui";
 import { MapView, isTyping } from "./view";
@@ -56,7 +56,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
     const contents = editor.layers.map((layer) => {
       const brush = editor.get(layer, x, y);
       if (!brush) return null;
-      return `${LAYER_NAMES[layer]}: ${palette.byLayer[layer].get(brush.id)?.name ?? brush.id}`;
+      return `${LAYER_NAMES[layer]}: ${findItem(palette, layer, brush.id)?.name ?? brush.id}`;
     }).filter(Boolean);
     hoverText.textContent = `${x}, ${y}${contents.length ? "  ·  " + contents.join("  ·  ") : ""}`;
   };

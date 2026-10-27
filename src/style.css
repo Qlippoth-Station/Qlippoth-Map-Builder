@@ -415,6 +415,23 @@ button.warning:hover {
   color: var(--text-muted);
 }
 
+.selected-text .notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selected-text .notes li {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .palette-filters {
   display: flex;
   flex-direction: column;
@@ -478,11 +495,16 @@ button.warning:hover {
 }
 
 .icon.glyph,
+.icon.placeholder,
 .icon.unknown {
   display: grid;
   place-items: center;
   color: #fff;
   font-weight: 700;
+}
+
+.icon.placeholder {
+  background-color: rgba(140, 145, 160, 0.55);
 }
 
 .icon.unknown {
