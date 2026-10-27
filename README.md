@@ -16,6 +16,9 @@ Everything runs in the browser. Nothing is uploaded anywhere; work is autosaved 
 
 ## Using it
 
+New to the tool? The [user guide](docs/user-guide.md) explains everything step by step, without any programming:
+making a map, saving and opening, Add, modules, and getting a station into the game.
+
 1. Pick a mode, then a layer (Floor, Structure, Object, and Marker in domain mode).
 2. Pick an item from the palette on the right.
 3. Choose an **action** (Brush, Erase, Select) and a **shape** (Single, Rectangle, Fill); every action works with every shape.
@@ -195,6 +198,7 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 | `src/view.ts` | Canvas rendering, camera and tool input |
 | `src/ui.ts` | Side panels and top bar |
 | `docs/format.md` | File format reference |
+| `docs/user-guide.md` | Step-by-step guide for people using the editor |
 
 ## Licenses
 
