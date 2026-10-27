@@ -230,6 +230,8 @@ function collectEntities(resources) {
         directions: icon?.directions > 1 ? icon.directions : undefined,
         wallMount: "WallMount" in components || undefined,
         smooth: typeof components.IconSmooth?.key === "string" ? components.IconSmooth.key : undefined,
+        // Job spawn points name their job; a station's gameMap job slots are counted from them.
+        job: typeof components.SpawnPoint?.job_id === "string" ? components.SpawnPoint.job_id : undefined,
       }),
     });
   }

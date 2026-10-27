@@ -10,7 +10,7 @@ const FORMAT = "qlippoth-station-autosave";
 export function stationAutosave(doc: MapDocument, palette: Palette): string {
   const { originX, originY } = doc.station ?? newSource(doc);
   const { text } = exportStation(doc, palette);
-  return JSON.stringify({ format: FORMAT, version: 1, name: doc.name, originX, originY, width: doc.width, height: doc.height, map: text });
+  return JSON.stringify({ format: FORMAT, version: 1, name: doc.name, originX, originY, width: doc.width, height: doc.height, profile: doc.profile, map: text });
 }
 
 /** The station in an autosave, or null when the text is not a station autosave. */
@@ -18,10 +18,12 @@ export function readStationAutosave(text: string, palette: Palette): MapDocument
   if (!text.startsWith("{")) return null;
   const data = JSON.parse(text);
   if (data?.format !== FORMAT || typeof data.map !== "string") return null;
-  return importStation(data.map, palette, String(data.name ?? "Station"), {
+  const doc = importStation(data.map, palette, String(data.name ?? "Station"), {
     originX: Number(data.originX),
     originY: Number(data.originY),
     width: Number(data.width),
     height: Number(data.height),
   });
+  if (data.profile === "exportable") doc.profile = "exportable";
+  return doc;
 }

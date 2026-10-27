@@ -43,6 +43,20 @@ links and other component data) is kept and written back. Edits change only what
 - when tiles change, the grid's chunks and atmosphere are rewritten: existing tiles keep their gas mixture, new tiles
   get standard air, so the station does not open as vacuum.
 
+### Draft and Exportable
+
+Stations have two profiles, switched above the *Checks* list:
+
+- **Draft** (default) only runs the checks every map gets: unknown ids, ids the game renamed or removed, entities
+  marked Do not map. Fast, for working and quick tests in the game.
+- **Exportable** adds what a playable station needs: no entities on space, no doubled anchored entities (same id and
+  direction in one cell), job spawn points, late-join and observer spawn points, gravity generator, SMES, substation,
+  APC, air vents and scrubbers.
+
+In the Exportable profile **Export package** downloads a `.zip` laid out like the game repository: the map under
+`Resources/Maps/`, a `gameMap` prototype under `Resources/Prototypes/Maps/` (station id from the grid's
+`BecomesStation`, job slots counted from the job spawn points) and a README with the steps to add it to the rotation.
+
 ### Testing in the game
 
 **Game** links the game server's data folder (Chrome and Edge; for a development server `bin/Content.Server/data`).
@@ -82,7 +96,7 @@ Press `?` in the editor for all shortcuts.
 | 3a | Import game map `.yml` files (fast line scanner), several entities per cell, rotation display, chunk-cached rendering, Cell panel | ✅ |
 | 3b | Editing stations: turning (T), Cell panel turn/remove, turning selections; game map `.yml` export with a lossless round trip | ✅ |
 | 4 | Link the server data folder: export straight to `loadmap`, import `savemap` output | ✅ |
-| 5 | *Exportable* profile: full station checks, `gameMap` prototype export | ⏳ |
+| 5 | *Draft* / *Exportable* profiles, station checks, export package with the `gameMap` prototype | ✅ |
 | 6 | Modules (departments) and project files | ⏳ |
 | 7 | Random spawners and `RoomFill` rooms | ⏳ |
 | 8 | Codebase picker for other SS14 forks | ⏳ |

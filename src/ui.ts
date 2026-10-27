@@ -32,7 +32,7 @@ const ENTRY_MODE_INFO: Record<EntryMode, { name: string; hint: string }> = {
 
 // ---- Left sidebar: tools, layers, selection, entries, view options, warnings -----------------------
 
-export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
+export function buildSidebar(editor: Editor, view: MapView, actions: { exportPackage(): void }): HTMLElement {
   const tools = h("div", { class: "tools" });
   const layers = h("div", { class: "layer-list" });
   const selectionSection = h("section", { class: "selection-panel" });
@@ -41,6 +41,7 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
   const options = h("div", { class: "options" });
   const warnings = h("div", { class: "warnings" });
   const warningTitle = h("h2", {}, "Checks");
+  const profile = h("div", { class: "profile" });
 
   const toolButton = (info: { name: string; key: string; hint: string }, active: boolean, onclick: () => void) =>
     h(
@@ -285,6 +286,26 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
     );
 
   let validateTimer = 0;
+  // Stations: Draft / Exportable profile, and the export package once the station is meant to be played.
+  const renderProfile = () => {
+    profile.hidden = editor.mode !== "station";
+    if (profile.hidden) return;
+    const button = (id: "draft" | "exportable", label: string, hint: string) =>
+      h("button", { class: editor.profile === id ? "active" : "", "aria-pressed": String(editor.profile === id), title: hint, onclick: () => editor.setProfile(id) }, label);
+    clear(
+      profile,
+      h(
+        "div",
+        { class: "mode-switch", role: "group", "aria-label": "Profile" },
+        button("draft", "Draft", "Basic checks only, for quick work and testing"),
+        button("exportable", "Exportable", "All checks a playable station needs, and the export package")
+      ),
+      editor.profile === "exportable"
+        ? h("button", { class: "secondary", title: "Map .yml, gameMap prototype and a README in one .zip", onclick: () => actions.exportPackage() }, "Export package")
+        : null
+    );
+  };
+
   const renderWarnings = () => {
     window.clearTimeout(validateTimer);
     validateTimer = window.setTimeout(() => {
@@ -311,6 +332,7 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
   renderCell();
   renderEntries();
   renderOptions();
+  renderProfile();
   renderWarnings();
   editor.subscribe((topics: Set<Topic>) => {
     if (topics.has("selection")) renderTools();
@@ -320,6 +342,7 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
     if (topics.has("selection") || topics.has("view") || topics.has("cells") || topics.has("document")) renderLayers();
     if (topics.has("view")) renderOptions();
     if (topics.has("cells") || topics.has("document")) renderWarnings();
+    if (topics.has("document") || topics.has("mode")) renderProfile();
   });
 
   return h(
@@ -331,7 +354,7 @@ export function buildSidebar(editor: Editor, view: MapView): HTMLElement {
     h("section", {}, h("h2", {}, "Layers"), layers),
     entrySection,
     h("section", {}, h("h2", {}, "View"), options),
-    h("section", { class: "grow" }, warningTitle, warnings)
+    h("section", { class: "grow" }, warningTitle, profile, warnings)
   );
 }
 

@@ -69,7 +69,11 @@ export interface MapDocument {
   layers: Record<LayerId, Map<string, Brush>>;
   /** Station imported from a game map: everything the editor does not show, kept to write the map back unchanged. */
   station?: StationSource;
+  /** Stations: Draft runs the basic checks only; Exportable adds the checks a playable station needs. */
+  profile?: StationProfile;
 }
+
+export type StationProfile = "draft" | "exportable";
 
 /**
  * File format id and current version per mode. Domain version 2 added entry settings and entry order;

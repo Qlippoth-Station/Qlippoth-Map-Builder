@@ -7,6 +7,7 @@ import { GameFolder, type FolderFile } from "./gamefolder";
 import { findItem, loadPalette, type Palette } from "./palette";
 import { readStationAutosave, stationAutosave } from "./station/autosave";
 import { exportStation } from "./station/export";
+import { exportPackage } from "./station/gamemap";
 import { importStation } from "./station/import";
 import { loadAutosaves, saveAutosave, saveLastMode, type Autosaves } from "./storage";
 import { buildPalettePanel, buildSidebar, buildTopBar } from "./ui";
@@ -17,6 +18,12 @@ const app = document.getElementById("app")!;
 function fileName(name: string, mode: ModeId): string {
   const slug = name.trim().replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
   return `${slug || mode}${MODE_INFO[mode].fileSuffix}`;
+}
+
+function download(blob: Blob, name: string): void {
+  const link = h("a", { href: URL.createObjectURL(blob), download: name });
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 function start(palette: Palette, autosaves: Autosaves): void {
@@ -145,10 +152,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
         window.alert(`Could not save: ${(error as Error).message}`);
         return;
       }
-      const blob = new Blob([text], { type: editor.mode === "station" ? "text/yaml" : "application/json" });
-      const link = h("a", { href: URL.createObjectURL(blob), download: fileName(editor.doc.name, editor.mode) });
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      download(new Blob([text], { type: editor.mode === "station" ? "text/yaml" : "application/json" }), fileName(editor.doc.name, editor.mode));
       editor.markSaved();
     },
     showCredits() {
@@ -159,6 +163,18 @@ function start(palette: Palette, autosaves: Autosaves): void {
     },
     showGame() {
       showGameDialog();
+    },
+    /** Exportable stations: the map, its gameMap prototype and a README in one .zip. */
+    exportPackage() {
+      editor.commitFloating();
+      const problems = editor.validate();
+      if (problems.length && !window.confirm(`The checks list ${problems.length} problem(s). Export the package anyway?`)) return;
+      const base = fileName(editor.doc.name, "station").replace(/\.yml$/, "");
+      try {
+        download(exportPackage(editor.doc, palette, base), `${base}.zip`);
+      } catch (error) {
+        window.alert(`Could not export: ${(error as Error).message}`);
+      }
     },
   };
 
@@ -514,7 +530,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
   clear(
     app,
     buildTopBar(editor, actions),
-    h("main", { class: "workspace" }, buildSidebar(editor, view), stage, buildPalettePanel(editor)),
+    h("main", { class: "workspace" }, buildSidebar(editor, view, actions), stage, buildPalettePanel(editor)),
     status,
     dialog
   );

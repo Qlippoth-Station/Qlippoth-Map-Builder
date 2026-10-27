@@ -18,9 +18,11 @@ import {
   type Item,
   type LayerId,
   type MapDocument,
+  type StationProfile,
 } from "./document";
 import { MODE_INFO, type ModeId } from "./modes";
 import { findItem, type Palette } from "./palette";
+import { exportableChecks } from "./station/checks";
 
 /** What a click does. */
 export const ACTIONS = ["brush", "erase", "select"] as const;
@@ -751,9 +753,19 @@ export class Editor {
 
   // ---- Validation ------------------------------------------------------------------------------
 
+  get profile(): StationProfile {
+    return this.doc.profile ?? "draft";
+  }
+
+  setProfile(profile: StationProfile): void {
+    this.doc.profile = profile;
+    this.emit("document");
+  }
+
   validate(): Warning[] {
     const warnings: Warning[] = [];
     if (this.mode === "domain") this.validateDomain(warnings);
+    if (this.mode === "station" && this.profile === "exportable") warnings.push(...exportableChecks(this.doc, this.palette));
 
     // One warning per id and layer, pointing at its first cell.
     for (const layer of this.layers) {

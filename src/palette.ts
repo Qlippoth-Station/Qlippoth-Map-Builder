@@ -15,6 +15,8 @@ export interface ItemFlags {
   smooth?: string;
   /** Tiles: number of sprite variants. */
   variants?: number;
+  /** Job spawn points: the job id players of that job spawn at. */
+  job?: string;
 }
 
 export interface PaletteItem {
@@ -99,6 +101,7 @@ export function itemNotes(item: PaletteItem): string[] {
     flags.smooth ? `Joins with "${flags.smooth}"` : null,
     flags.hidden ? "Hidden in the spawn menu" : null,
     flags.noMap ? "Do not map" : null,
+    flags.job ? `Spawn point: ${flags.job}` : null,
     item.layer !== "marker" && item.icon === null ? "No sprite" : null,
   ].filter((note): note is string => note !== null);
 }

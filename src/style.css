@@ -930,3 +930,15 @@ button.warning:hover {
 .commands .field.inline {
   justify-content: flex-start;
 }
+
+.profile {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.profile[hidden] {
+  display: none;
+}
