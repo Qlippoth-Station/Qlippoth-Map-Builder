@@ -23,6 +23,9 @@ import { deserialize, serialize, type MapDocument, type ModuleInstance } from ".
 import type { ModuleLibrary } from "./modules";
 import { MODE_INFO, MODES, type ModeId } from "./modes";
 import type { Palette } from "./palette";
+
+/** "owner/repo@commit" of the palette a project was made with. */
+const codebaseOf = (palette: Palette) => `${palette.codebase.repository}${palette.gameCommit ? `@${palette.gameCommit}` : ""}`;
 import { readStationAutosave } from "./station/autosave";
 import { exportStation } from "./station/export";
 import { importStation } from "./station/import";
@@ -47,6 +50,8 @@ export function exportProject(doc: MapDocument, palette: Palette, library: Modul
     "version: 1",
     `name: ${scalar(doc.name)}`,
     `mode: ${doc.mode}`,
+    // The game codebase the prototype ids come from.
+    `codebase: ${scalar(codebaseOf(palette))}`,
     `map: ${scalar(mapFile)}`,
     // The editor's own state of the map (margins, profile), so the project opens exactly as it was saved.
     `editor: ${scalar("editor.json")}`,
@@ -74,6 +79,8 @@ export function exportProject(doc: MapDocument, palette: Palette, library: Modul
 export interface OpenedProject {
   doc: MapDocument;
   modules: number;
+  /** Set when the project was made with another codebase than the current palette's. */
+  otherCodebase: string | null;
 }
 
 /** Reads a project .zip: the modules go into the library (as new versions), the map comes back with its instances. */
@@ -107,7 +114,8 @@ export async function openProject(data: ArrayBuffer, palette: Palette, library: 
       .filter((instance) => ids.has(instance.module))
       .map((instance) => ({ ...instance, name: instance.module, module: ids.get(instance.module)!.id, version: ids.get(instance.module)!.updated }))
   );
-  return { doc, modules: ids.size };
+  const made = project.codebase.split("@")[0];
+  return { doc, modules: ids.size, otherCodebase: made && made !== palette.codebase.repository ? project.codebase : null };
 }
 
 function readMap(text: string, mode: ModeId, name: string, palette: Palette): MapDocument {
@@ -122,6 +130,7 @@ interface ProjectFile {
   mode: string;
   map: string;
   editor: string;
+  codebase: string;
   modules: { name: string; id: string; file: string }[];
   instances: (Omit<ModuleInstance, "name" | "version"> & { module: string })[];
 }
@@ -156,6 +165,7 @@ function parseProject(text: string): ProjectFile {
     mode: String(top.mode ?? ""),
     map: String(top.map ?? ""),
     editor: String(top.editor ?? ""),
+    codebase: String(top.codebase ?? ""),
     modules: ((top.modules as Record<string, unknown>[]) ?? []).map((module) => ({ name: String(module.name), id: String(module.id ?? ""), file: String(module.file) })),
     instances: ((top.instances as Record<string, unknown>[]) ?? []).map((instance) => ({
       module: String(instance.module),

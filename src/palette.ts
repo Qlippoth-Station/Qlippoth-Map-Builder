@@ -1,4 +1,5 @@
 import { LAYERS, type LayerId } from "./document";
+import { currentCodebaseId, customCodebases, DEFAULT_CODEBASE, registeredCodebases, setCurrentCodebase, type CodebaseInfo } from "./codebase/store";
 
 /** What the game data says about an entity, read when the palette is built (see scripts/build-palette.mjs). */
 export interface ItemFlags {
@@ -34,6 +35,10 @@ export interface PaletteItem {
 
 export interface Palette {
   gameCommit: string | null;
+  /** The game codebase the palette was built from. */
+  codebase: CodebaseInfo;
+  /** License and copyright of every sprite used. */
+  credits(): Promise<{ source: string; license?: string; copyright?: string }[]>;
   iconSize: number;
   atlasColumns: number;
   atlasUrl: string;
@@ -56,16 +61,47 @@ export const MARKERS: PaletteItem[] = [
 
 const BASE = "palette/";
 
+/** The palette of the codebase chosen in the Codebase dialog; the default codebase when that one is gone. */
 export async function loadPalette(): Promise<Palette> {
-  const response = await fetch(`${BASE}palette.json`);
+  const id = await currentCodebaseId();
+  if (id && id !== DEFAULT_CODEBASE.id) {
+    try {
+      const custom = (await customCodebases()).find((codebase) => codebase.id === id);
+      if (custom) {
+        const atlasUrl = URL.createObjectURL(custom.atlas);
+        const palette = createPalette(custom.palette as Parameters<typeof createPalette>[0], atlasUrl, await loadImage(atlasUrl));
+        const { palette: _, atlas: __, credits, built: ___, ...info } = custom;
+        return { ...palette, gameCommit: custom.commit, codebase: info, credits: async () => credits as Awaited<ReturnType<Palette["credits"]>> };
+      }
+      const registered = (await registeredCodebases()).find((codebase) => codebase.id === id);
+      if (registered) return await loadServedPalette(registered.path, registered);
+    } catch {
+      // Fall back to the default codebase below.
+    }
+    await setCurrentCodebase(null);
+  }
+  const registered = (await registeredCodebases()).find((codebase) => codebase.default) ?? DEFAULT_CODEBASE;
+  return loadServedPalette(BASE, registered);
+}
+
+async function loadServedPalette(base: string, info: CodebaseInfo): Promise<Palette> {
+  const response = await fetch(`${base}palette.json`);
   if (!response.ok) throw new Error(`palette.json: HTTP ${response.status}`);
   const data = await response.json();
+  const atlasUrl = `${base}atlas.png`;
+  const palette = createPalette(data, atlasUrl, await loadImage(atlasUrl));
+  return {
+    ...palette,
+    codebase: { ...info, commit: data.gameCommit ?? info.commit },
+    credits: async () => (await fetch(`${base}credits.json`)).json(),
+  };
+}
 
-  const atlasUrl = `${BASE}atlas.png`;
-  const atlas = new Image();
-  atlas.src = atlasUrl;
-  await atlas.decode();
-  return createPalette(data, atlasUrl, atlas);
+async function loadImage(url: string): Promise<HTMLImageElement> {
+  const image = new Image();
+  image.src = url;
+  await image.decode();
+  return image;
 }
 
 /** Builds the palette from palette.json data (also used by Node scripts, with no atlas image). */
@@ -88,6 +124,8 @@ export function createPalette(
     byLayer,
     migrations: new Map(Object.entries(data.migrations ?? {})),
     spawnerCarrier: data.spawnerCarrier ?? null,
+    codebase: { ...DEFAULT_CODEBASE, commit: data.gameCommit ?? null },
+    credits: async () => [],
   };
 }
 

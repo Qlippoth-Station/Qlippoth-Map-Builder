@@ -125,6 +125,8 @@ export function parseMapFile(text: string): MapFile {
   if (!file.format) throw new MapFileError("The map file has no format version.");
   let group: ProtoGroup | null = null;
   if (file.format < 6 || file.format > 7) throw new MapFileError(`Map format ${file.format} is not supported (6 and 7 are).`);
+  // Chunks written into a grid that has none yet use the file format's own chunk version.
+  const defaultChunkVersion = file.format >= 7 ? 7 : 6;
 
   // Top-level sections up to the entities.
   for (; i < lines.length; i++) {
@@ -160,7 +162,7 @@ export function parseMapFile(text: string): MapFile {
   const finishChunk = () => {
     if (!chunk || !grid) return;
     decodeChunk(file, grid, chunk.ind, chunk.tiles, chunk.version, chunk.size);
-    grid.chunkVersion = Math.max(grid.chunkVersion, chunk.version);
+    grid.chunkVersion = chunk.version;
     grid.chunkSize = chunk.size;
     chunk = null;
   };
@@ -234,13 +236,13 @@ export function parseMapFile(text: string): MapFile {
       component = line.slice(12).trim();
       componentStart = i;
       if (component === "Transform") entity.transform.at = i;
-      else if (component === "MapGrid") grid = { uid: entity.uid, chunkSize: 16, chunkVersion: 6, tiles: new Map(), mapGrid: [i, i], atmosphere: null };
+      else if (component === "MapGrid") grid = { uid: entity.uid, chunkSize: 16, chunkVersion: defaultChunkVersion, tiles: new Map(), mapGrid: [i, i], atmosphere: null };
       else if (component === "RandomSpawner") {
         entity.spawner = {};
         spawnerList = null;
       } else if (component === "GridAtmosphere") {
         atmos = { start: i, end: i, chunkSize: 4, mixes: new Map(), uniqueMixes: [] };
-        grid ??= { uid: entity.uid, chunkSize: 16, chunkVersion: 6, tiles: new Map(), mapGrid: [i, i], atmosphere: null };
+        grid ??= { uid: entity.uid, chunkSize: 16, chunkVersion: defaultChunkVersion, tiles: new Map(), mapGrid: [i, i], atmosphere: null };
         grid.atmosphere = atmos;
         inUniqueMixes = false;
       }

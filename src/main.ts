@@ -3,6 +3,19 @@ import { LAYER_NAMES, clampSize, createDocument, deserialize, itemsOf, serialize
 import { ACTIONS, ACTION_INFO, Editor, SHAPES, SHAPE_INFO } from "./editor";
 import { clear, h } from "./dom";
 import { MODE_INFO, type ModeId } from "./modes";
+import { parseRepository } from "./codebase/github";
+import {
+  customCodebases,
+  customId,
+  DEFAULT_CODEBASE,
+  registeredCodebases,
+  removeCustomCodebase,
+  saveCustomCodebase,
+  setCurrentCodebase,
+  type CodebaseInfo,
+  type CustomCodebase,
+} from "./codebase/store";
+import type { WorkerMessage } from "./codebase/worker";
 import { GameFolder, type FolderFile } from "./gamefolder";
 import { findItem, loadPalette, type Palette } from "./palette";
 import { autosaveText, readAutosave } from "./autosave";
@@ -66,7 +79,11 @@ function start(palette: Palette, autosaves: Autosaves): void {
     hoverText,
     h("span", { class: "spacer" }),
     stateText,
-    h("span", { class: "commit", title: "Game commit the palette was built from" }, palette.gameCommit ? `palette @ ${palette.gameCommit.slice(0, 8)}` : "palette")
+    h(
+      "button",
+      { class: "commit ghost", title: "Game codebase and commit the palette was built from (change in Codebase)", onclick: () => showCodebaseDialog() },
+      `${palette.codebase.name}${palette.gameCommit ? ` @ ${palette.gameCommit.slice(0, 8)}` : ""}`
+    )
   );
 
   let hovered: [number, number] | null = null;
@@ -232,7 +249,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
         const file = input.files?.[0];
         if (!file) return;
         try {
-          const { doc } = await openProject(await file.arrayBuffer(), palette, library);
+          const { doc, otherCodebase } = await openProject(await file.arrayBuffer(), palette, library);
+          if (otherCodebase && !window.confirm(`This project was made with ${otherCodebase}; the palette is ${palette.codebase.repository}. Ids it does not know are listed in Checks. Open it anyway?`)) return;
           if (!confirmDiscard(doc.mode)) return;
           editor.replaceDocument(doc);
           saveLastMode(doc.mode);
@@ -264,6 +282,9 @@ function start(palette: Palette, autosaves: Autosaves): void {
     },
     showGame() {
       showGameDialog();
+    },
+    showCodebase() {
+      showCodebaseDialog();
     },
     /** Exportable stations: the map, its gameMap prototype and a README in one .zip. */
     exportPackage() {
@@ -357,6 +378,128 @@ function start(palette: Palette, autosaves: Autosaves): void {
       "Shortcuts",
       h("table", { class: "shortcuts" }, h("tbody", {}, ...rows.map(([key, what]) => h("tr", {}, h("td", {}, h("kbd", {}, key)), h("td", {}, what)))))
     );
+  }
+
+  /**
+   * Which game the palette comes from: Qlippoth Station, codebases served with the site, or any public SS14 fork
+   * added from its GitHub link (built in the browser and kept there). Switching reloads the page.
+   */
+  function showCodebaseDialog() {
+    const body = h("div", { class: "codebases" });
+    openDialog("Codebase", body);
+    const link = h("input", { type: "text", placeholder: "https://github.com/owner/repo  or  owner/repo", "aria-label": "GitHub repository", class: "repo-link" });
+    const progress = h("progress", { max: 1, value: 0, hidden: true });
+    const status = h("p", { class: "muted" });
+    let worker: Worker | null = null;
+
+    const use = async (id: string | null) => {
+      flushAutosaves();
+      await setCurrentCodebase(id);
+      location.reload();
+    };
+
+    const build = () => {
+      const repository = parseRepository(link.value);
+      if (!repository) {
+        status.textContent = "Enter a GitHub repository: owner/repo or its https://github.com/... link.";
+        return;
+      }
+      worker?.terminate();
+      worker = new Worker(new URL("./codebase/worker.ts", import.meta.url), { type: "module" });
+      progress.hidden = false;
+      status.textContent = "Reading the repository…";
+      const stages: Record<string, string> = { listing: "Listing files", prototypes: "Reading prototypes", sprites: "Reading sprite data", images: "Loading sprites" };
+      worker.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+        const message = event.data;
+        if (message.type === "progress") {
+          progress.max = message.total;
+          progress.value = message.done;
+          status.textContent = `${stages[message.stage] ?? message.stage}… ${message.done} / ${message.total}`;
+          return;
+        }
+        worker?.terminate();
+        worker = null;
+        progress.hidden = true;
+        if (message.type === "error") {
+          status.textContent = `Could not build the palette: ${message.message}`;
+          return;
+        }
+        const name = `${repository.owner}/${repository.repo}`;
+        const codebase: CustomCodebase = {
+          id: customId(name, repository.ref),
+          name: repository.repo,
+          repository: name,
+          ref: message.ref,
+          commit: message.commit,
+          palette: { ...message.palette, gameCommit: message.commit },
+          atlas: message.atlas,
+          credits: message.credits,
+          built: Date.now(),
+        };
+        const items = (message.palette as { items: unknown[] }).items.length;
+        if (!(await saveCustomCodebase(codebase))) {
+          status.textContent = "Built, but the browser refused to store it (private mode?).";
+          return;
+        }
+        status.textContent = `Built ${items} palette items from ${name} @ ${message.commit.slice(0, 8)}.`;
+        void render();
+      };
+      worker.postMessage(repository);
+    };
+
+    const render = async () => {
+      const [registered, custom] = await Promise.all([registeredCodebases(), customCodebases()]);
+      const current = palette.codebase.id;
+      const row = (info: CodebaseInfo, extra: Node | null, detail: string) =>
+        h(
+          "li",
+          { class: info.id === current ? "active" : "" },
+          h("div", { class: "module-name" }, h("strong", {}, info.name), h("span", { class: "muted" }, `${info.repository}${detail}`)),
+          h(
+            "div",
+            { class: "button-row" },
+            info.id === current
+              ? h("span", { class: "muted" }, "In use")
+              : h("button", { type: "button", class: "secondary", onclick: () => void use(info.id === DEFAULT_CODEBASE.id ? null : info.id) }, "Use"),
+            extra
+          )
+        );
+      clear(
+        body,
+        h("p", {}, "The palette, its names and sprites come from one game codebase. Maps keep prototype ids, so a map made with one codebase shows unknown ids in another."),
+        h("h3", {}, "Served with the editor"),
+        h("ul", { class: "codebase-list" }, ...registered.map((info) => row(info, null, info.commit ? ` @ ${info.commit.slice(0, 8)}` : ""))),
+        h("h3", {}, "Added from GitHub"),
+        custom.length
+          ? h(
+              "ul",
+              { class: "codebase-list" },
+              ...custom.map((info) =>
+                row(
+                  info,
+                  h(
+                    "button",
+                    { type: "button", class: "ghost", title: "Remove from this browser", onclick: async () => { await removeCustomCodebase(info.id); if (info.id === current) await use(null); else void render(); } },
+                    "✕"
+                  ),
+                  ` @ ${info.commit?.slice(0, 8)} · built ${new Date(info.built).toLocaleDateString()}`
+                )
+              )
+            )
+          : h("p", { class: "muted" }, "None yet."),
+        h("h3", {}, "Add a codebase"),
+        h(
+          "p",
+          { class: "muted" },
+          "Any public SS14 fork on GitHub. The editor reads its Resources folder (prototypes, sprites, a few translations) straight from GitHub and builds the palette here; it takes a minute or two and is kept in this browser."
+        ),
+        h("div", { class: "button-row" }, link, h("button", { type: "button", class: "primary", onclick: build }, "Build palette")),
+        progress,
+        status
+      );
+    };
+    void render();
+    dialog.addEventListener("close", () => worker?.terminate(), { once: true });
   }
 
   /** The game server's data folder: export straight into it, open what the game saved, commands to copy. */
@@ -487,7 +630,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
     const body = h("div", { class: "credits" }, h("p", {}, "Loading…"));
     openDialog("Credits", body);
     try {
-      const credits: { source: string; license?: string; copyright?: string }[] = await (await fetch("palette/credits.json")).json();
+      const credits = await palette.credits();
       const licenses = new Map<string, number>();
       for (const credit of credits) licenses.set(credit.license ?? "Unknown", (licenses.get(credit.license ?? "Unknown") ?? 0) + 1);
       clear(
@@ -495,7 +638,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
         h(
           "p",
           {},
-          "Sprites are taken from the Qlippoth Station game repository (a Space Station 14 fork) and keep their original licenses. ",
+          `Sprites are taken from the ${palette.codebase.name} game repository (${palette.codebase.repository}) and keep their original licenses. `,
           "Each entry below lists the sprite source, license and copyright as recorded in the game files."
         ),
         h("ul", { class: "license-summary" }, ...[...licenses].sort((a, b) => b[1] - a[1]).map(([license, count]) => h("li", {}, h("strong", {}, license), ` · ${count} sprite sources`))),

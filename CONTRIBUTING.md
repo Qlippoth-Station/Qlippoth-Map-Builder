@@ -9,7 +9,10 @@
 ## Changing the editor
 
 - Keep the editor fully client-side: no backend, no tracking, no external requests besides its own files. Local files
-  and the linked game folder are only read or written when the user asks for it.
+  and the linked game folder are only read or written when the user asks for it. The only other requests go to
+  GitHub (api.github.com, raw.githubusercontent.com), and only while building a codebase the user added by its link.
+- To serve another codebase with the site, add it to `codebases.json` (`id`, `name`, `repository` as owner/repo,
+  optional `ref`).
 - Any change to the file format needs a `version` bump in `src/document.ts` and an update to `docs/format.md`.
 - Run `npm run build` before opening a pull request; CI runs the same command.
 - Do not commit `public/palette/`; it is generated from the game repository.

@@ -1060,3 +1060,61 @@ button.warning:hover {
 .set-resolve .field.inline {
   justify-content: flex-start;
 }
+
+/* ---- Codebase dialog --------------------------------------------------------------------------- */
+
+.codebases {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 600px;
+}
+
+.codebases p,
+.codebases h3 {
+  margin: 0;
+}
+
+.codebases h3 {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.codebase-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.codebase-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.codebase-list li.active strong {
+  color: var(--accent);
+}
+
+.repo-link {
+  flex: 1;
+  min-width: 220px;
+}
+
+.codebases progress {
+  width: 100%;
+}
+
+.codebases progress[hidden] {
+  display: none;
+}
+
+.statusbar .commit {
+  padding: 0 4px;
+  font: inherit;
+  color: inherit;
+}

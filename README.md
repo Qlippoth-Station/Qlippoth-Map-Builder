@@ -74,6 +74,21 @@ The **Random** tab keeps random sets per mode (in the browser) and, for stations
   `Resources/Maps/Dungeon/`, `dungeonRoom` prototypes with a tag per slot, and a room marker entity at the middle of
   each slot.
 
+### Codebases
+
+The palette (ids, names, sprites, layers) comes from one game codebase, shown in the status bar. **Codebase** switches
+between:
+
+- **Qlippoth Station** (default) and the other codebases listed in `codebases.json`: CI builds their palettes with
+  the site (`npm run codebases`, sparse clones of each repository).
+- **Any public SS14 fork on GitHub**: paste its link and the editor builds the palette in the browser, reading the
+  repository's `Resources` folder from GitHub (a few API requests plus the files themselves; a minute or two). The
+  result is kept in the browser.
+
+The palette builder is shared: `src/palette-core.mjs` runs in Node for CI and in a Web Worker for GitHub links.
+Maps keep prototype ids, so a map made with one codebase lists unknown ids in another; project files record the
+codebase they were made with.
+
 ### Draft and Exportable
 
 Stations have two profiles, switched above the *Checks* list:
@@ -130,7 +145,7 @@ Press `?` in the editor for all shortcuts.
 | 5 | *Draft* / *Exportable* profiles, station checks, export package with the `gameMap` prototype | ✅ |
 | 6 | Module library (departments, rooms), placed instances with updates, edge checks, project files | ✅ |
 | 7 | Random sets (painted or `RandomSpawner`), random room slots (`RoomFill`) in the export package | ✅ |
-| 8 | Codebase picker for other SS14 forks | ⏳ |
+| 8 | Codebase picker: served codebases (`codebases.json`, built by CI) and any public fork from its GitHub link | ✅ |
 
 ## Development
 
@@ -163,7 +178,10 @@ and deploys to GitHub Pages on every push to `main` and once a day. The game rep
 
 | Path | What |
 |---|---|
-| `scripts/build-palette.mjs` | Reads tile and entity prototypes, resolves inheritance, builds `palette.json`, `atlas.png`, `credits.json` |
+| `src/palette-core.mjs` | Palette builder (tile and entity prototypes, inheritance, layers, flags, atlas), shared by Node and the browser |
+| `scripts/build-palette.mjs` | Runs the palette builder on a checkout: `palette.json`, `atlas.png`, `credits.json` |
+| `scripts/build-codebases.mjs`, `codebases.json` | Palettes of the other served codebases |
+| `src/codebase/` | Codebase choice, GitHub reader and the in-browser palette worker |
 | `scripts/palette-coverage.mjs` | Checks the palette against the game's station maps |
 | `src/modes.ts` | Mode definitions: layers, file suffix, defaults |
 | `src/document.ts` | Document model and file formats |

@@ -44,6 +44,8 @@ jobs:
 
       - run: npm ci
       - run: npm run palette -- --game game
+      # Other codebases listed in codebases.json, for the editor's Codebase dialog.
+      - run: node scripts/build-codebases.mjs
       # Fails when the palette stops knowing the game's own station maps (e.g. a classification bug drops entities).
       - run: npm run palette:coverage -- --game game --min 95
       # Every station map must come back byte for byte through import + export, and edits must land correctly.
