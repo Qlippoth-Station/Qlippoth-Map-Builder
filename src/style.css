@@ -368,6 +368,10 @@ select {
   background: var(--panel-raised);
 }
 
+.warning.error {
+  border-left-color: var(--danger);
+}
+
 button.warning:hover {
   border-color: var(--accent);
 }
@@ -1117,4 +1121,31 @@ button.warning:hover {
   padding: 0 4px;
   font: inherit;
   color: inherit;
+}
+
+/* ---- Guide dialog ----------------------------------------------------------------------------- */
+
+.guide {
+  max-width: 640px;
+}
+
+.guide h3 {
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+
+.guide ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guide p {
+  margin: 0;
+}
+
+.guide .commands {
+  margin-bottom: 12px;
 }

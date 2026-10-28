@@ -1,5 +1,5 @@
 // Station checks of the Exportable profile: things that make a station unplayable or odd in the game.
-// The Draft profile only has the checks every map gets (unknown, renamed or removed ids).
+// The Draft profile only has the checks every map gets (unknown, renamed or removed ids) and the light check.
 
 import { itemsOf, parseKey, type MapDocument } from "../document";
 import { findItem, type Palette } from "../palette";
@@ -7,19 +7,37 @@ import { findItem, type Palette } from "../palette";
 export interface StationWarning {
   message: string;
   at?: [number, number];
+  /** "error": the map does not load or the round is badly broken (shown red); otherwise a warning (yellow). */
+  level?: "error";
 }
 
-/** What a playable station needs at least one of, by prototype id prefix (Qlippoth / upstream SS14 ids). */
-const ESSENTIALS: [prefix: string, what: string][] = [
-  ["SpawnPointLatejoin", "late-join spawn point (SpawnPointLatejoin)"],
+/**
+ * What a playable station needs at least one of, by prototype id prefix (Qlippoth / upstream SS14 ids). Errors:
+ * without them nobody can join as crew, nothing has power, or everyone floats.
+ */
+const ESSENTIALS: [prefix: string, what: string, level?: "error"][] = [
+  ["SpawnPointLatejoin", "late-join spawn point (SpawnPointLatejoin): players joining mid-round have nowhere to appear", "error"],
   ["SpawnPointObserver", "observer spawn point (SpawnPointObserver)"],
-  ["GravityGenerator", "gravity generator"],
-  ["SMES", "SMES (power storage)"],
-  ["Substation", "substation"],
-  ["APC", "APC"],
+  ["GravityGenerator", "gravity generator: everyone floats", "error"],
+  ["SMES", "SMES (power storage): the station has no power", "error"],
+  ["Substation", "substation: the station has no power", "error"],
+  ["APC", "APC: rooms have no power", "error"],
   ["GasVentPump", "air vent (GasVentPump)"],
   ["GasVentScrubber", "air scrubber (GasVentScrubber)"],
 ];
+
+/** Light fixtures: the Lighting category, or the ids the game uses for lights and lamps outside it. */
+export function isLight(id: string, category: string | undefined): boolean {
+  return category?.startsWith("Structures/Lighting") === true || /^(Always)?Powered.*light|^EmergencyLight|^Lamp/i.test(id);
+}
+
+/** Without any light the station is pitch black in the game. */
+export function lightChecks(doc: MapDocument, palette: Palette): StationWarning[] {
+  for (const brush of doc.layers.object.values()) {
+    for (const item of itemsOf(brush)) if (isLight(item.id, findItem(palette, "object", item.id)?.category)) return [];
+  }
+  return doc.layers.floor.size ? [{ message: "No lights: the station is pitch black in the game (togglelight shows it anyway)." }] : [];
+}
 
 export function exportableChecks(doc: MapDocument, palette: Palette): StationWarning[] {
   const warnings: StationWarning[] = [];
@@ -57,10 +75,10 @@ export function exportableChecks(doc: MapDocument, palette: Palette): StationWar
 
   if (onSpace) warnings.push({ message: `${onSpace} entities stand on space (no tile under them).`, at: firstOnSpace });
   if (doubled) warnings.push({ message: `${doubled} anchored entities are doubled (same id and direction in one cell).`, at: firstDoubled });
-  if (doc.layers.floor.size === 0) warnings.push({ message: "The station has no tiles." });
-  if (!jobs) warnings.push({ message: "No job spawn points: the gameMap gets no job slots." });
-  for (const [prefix, what] of ESSENTIALS) {
-    if (![...ids].some((id) => id.startsWith(prefix))) warnings.push({ message: `No ${what}.` });
+  if (doc.layers.floor.size === 0) warnings.push({ message: "The station has no tiles.", level: "error" });
+  if (!jobs) warnings.push({ message: "No job spawn points: the gameMap gets no job slots, so nobody can join as crew.", level: "error" });
+  for (const [prefix, what, level] of ESSENTIALS) {
+    if (![...ids].some((id) => id.startsWith(prefix))) warnings.push({ message: `No ${what}.`, level });
   }
   return warnings;
 }
@@ -104,7 +122,7 @@ export function moduleEdgeChecks(doc: MapDocument, palette: Palette): StationWar
       }
     }
     if (badDoors) warnings.push({ message: `Module "${instance.name}": ${badDoors} door(s) on its edge open into a wall or space.`, at: firstDoor });
-    if (openEdges) warnings.push({ message: `Module "${instance.name}": ${openEdges} edge tile(s) are open to space.`, at: firstOpen });
+    if (openEdges) warnings.push({ message: `Module "${instance.name}": ${openEdges} edge tile(s) are open to space; the air leaks out.`, at: firstOpen, level: "error" });
   }
   return warnings;
 }

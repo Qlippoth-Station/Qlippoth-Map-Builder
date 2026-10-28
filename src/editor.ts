@@ -26,7 +26,7 @@ import {
 import { pickEntry, SET_PREFIX, spawnerData, type RandomSetLibrary } from "./randomsets";
 import { MODE_INFO, type ModeId } from "./modes";
 import { findItem, type Palette } from "./palette";
-import { exportableChecks, moduleEdgeChecks } from "./station/checks";
+import { exportableChecks, lightChecks, moduleEdgeChecks } from "./station/checks";
 
 /** What a click does. */
 export const ACTIONS = ["brush", "erase", "select"] as const;
@@ -64,6 +64,8 @@ type Change =
 export interface Warning {
   message: string;
   at?: [number, number];
+  /** "error": the map does not load or cannot be played (shown red); otherwise a warning (yellow). */
+  level?: "error";
 }
 
 /**
@@ -931,7 +933,7 @@ export class Editor {
     const warnings: Warning[] = [];
     if (this.mode === "domain") this.validateDomain(warnings);
     if (this.mode === "station" && this.profile === "exportable") warnings.push(...exportableChecks(this.doc, this.palette));
-    if (this.mode === "station") warnings.push(...moduleEdgeChecks(this.doc, this.palette));
+    if (this.mode === "station") warnings.push(...moduleEdgeChecks(this.doc, this.palette), ...lightChecks(this.doc, this.palette));
 
     // One warning per id and layer, pointing at its first cell.
     for (const layer of this.layers) {
@@ -946,10 +948,12 @@ export class Editor {
         const renamed = this.palette.migrations.get(id);
         if (renamed === null) warnings.push({ message: `"${id}" was removed from the game; it disappears when the map loads.`, at });
         else if (renamed && findItem(this.palette, layer, id)) warnings.push({ message: `"${id}" was renamed to "${renamed}" in the game.`, at });
-        else warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette).`, at });
+        // The game refuses to load a map with an entity or tile it does not know.
+        else warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette); the game will not load the map.`, at, level: "error" });
       }
     }
-    return warnings;
+    // Errors first; the sort keeps the order within each level.
+    return warnings.sort((a, b) => Number(b.level === "error") - Number(a.level === "error"));
   }
 
   /** Q-Gate rules: at least one entry, a Qlippoth spot, markers on walkable floor. */
@@ -957,15 +961,15 @@ export class Editor {
     const markers = this.doc.layers.marker;
     const count = (id: string) => [...markers.values()].flatMap(itemsOf).filter((item) => item.id === id).length;
 
-    if (count(ENTRY_ID) === 0) warnings.push({ message: "No Entry marker." });
-    if (count("QlippothSpot") === 0) warnings.push({ message: "No Qlippoth spot marker." });
+    if (count(ENTRY_ID) === 0) warnings.push({ message: "No Entry marker: players have nowhere to arrive.", level: "error" });
+    if (count("QlippothSpot") === 0) warnings.push({ message: "No Qlippoth spot marker.", level: "error" });
 
     for (const [key] of markers) {
       const [x, y] = parseKey(key);
-      if (!this.doc.layers.floor.has(key)) warnings.push({ message: "Marker without a floor tile.", at: [x, y] });
+      if (!this.doc.layers.floor.has(key)) warnings.push({ message: "Marker without a floor tile: it is in space.", at: [x, y], level: "error" });
       const structure = itemsOf(this.doc.layers.structure.get(key));
       if (structure.some((item) => this.palette.byLayer.structure.get(item.id)?.category === "Structures/Walls")) {
-        warnings.push({ message: "Marker inside a wall.", at: [x, y] });
+        warnings.push({ message: "Marker inside a wall: whoever arrives there is stuck.", at: [x, y], level: "error" });
       }
     }
   }
