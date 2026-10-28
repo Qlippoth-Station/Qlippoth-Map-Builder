@@ -19,7 +19,7 @@ import type { WorkerMessage } from "./codebase/worker";
 import { GameFolder, type FolderFile } from "./gamefolder";
 import { findItem, loadPalette, type Palette } from "./palette";
 import { autosaveText, readAutosave } from "./autosave";
-import { exportStation } from "./station/export";
+import { exportStation, stationCenter } from "./station/export";
 import { exportPackage } from "./station/gamemap";
 import { importStation } from "./station/import";
 import { loadAutosaves, saveAutosave, saveLastMode, type Autosaves } from "./storage";
@@ -277,6 +277,9 @@ function start(palette: Palette, autosaves: Autosaves): void {
     showCredits() {
       showCreditsDialog();
     },
+    showGuide() {
+      showGuideDialog();
+    },
     showHelp() {
       showHelpDialog();
     },
@@ -518,15 +521,19 @@ function start(palette: Palette, autosaves: Autosaves): void {
         h("button", { type: "button", class: "ghost", title: "Copy", onclick: () => void navigator.clipboard?.writeText(text) }, "Copy"),
         h("span", { class: "muted" }, hint)
       );
-    const commands = () =>
-      h(
+    const commands = () => {
+      const [x, y] = editor.mode === "station" ? stationCenter(editor.doc) : [0, 0];
+      return h(
         "div",
         { class: "commands" },
         h("label", { class: "field inline" }, h("span", {}, "Map id for loadmap"), mapId),
         command(`loadmap ${mapId.value} ${lastPath}`, "loads the station as a new map (pick an unused map id)"),
-        command(`tp 0 0 ${mapId.value}`, "takes you there (as an admin ghost)"),
-        command(`savemap ${mapId.value} ${lastPath}`, "writes your in-game changes back; add true at the end if the game asks to force it")
+        command(`mapinit ${mapId.value}`, "starts the map: a loaded map is paused, and nothing on it moves (you included) until it is started"),
+        command(`tp ${x} ${y} ${mapId.value}`, "takes you to the middle of the station (as a ghost)"),
+        command("togglelight", "all black? With no lights placed the station is dark; this turns lighting off on your screen (again to turn it back on)"),
+        command(`savemap ${mapId.value} ${lastPath} true`, "writes your in-game changes back (true: a started map is only saved when forced)")
       );
+    };
     mapId.addEventListener("change", () => void render());
 
     const openFile = async (file: FolderFile, add: boolean) => {
@@ -624,6 +631,53 @@ function start(palette: Palette, autosaves: Autosaves): void {
       );
     };
     void render();
+  }
+
+  /** A short getting-started guide; docs/user-guide.md has the long one. */
+  function showGuideDialog() {
+    const step = (title: string, ...text: (Node | string)[]) => h("li", {}, h("strong", {}, title), " ", ...text);
+    const b = (text: string) => h("strong", {}, text);
+    const code = (text: string) => h("code", {}, text);
+    openDialog(
+      "Guide",
+      h(
+        "div",
+        { class: "guide" },
+        h("h3", {}, "Making a map"),
+        h(
+          "ol",
+          {},
+          step("Pick a mode.", "The top left buttons switch between ", b("Domain"), " (rift domains) and ", b("Station"), " (game maps). Each mode keeps its own map."),
+          step("Start a map.", b("New"), " makes an empty one; ", b("Open"), " opens a saved file or one of the game's own maps (", code("Resources/Maps/*.yml"), ")."),
+          step("Pick a layer and an item.", "Layers are on the left (keys ", b("1"), "–", b("4"), "): floor, structure (walls, doors), object. The palette on the right lists what each layer holds; ", b("/"), " searches it."),
+          step("Paint.", "Choose an action (", b("Brush"), ", ", b("Erase"), ", ", b("Select"), ") and a shape (", b("Single"), ", ", b("Rectangle"), ", ", b("Fill"), "). ", b("T"), " turns what you place, right click picks what is in a cell."),
+          step("Look at the checks.", "The ", b("Checks"), " list on the left shows problems; click one to jump to it. Switch a station to ", b("Exportable"), " before handing it in."),
+          step("Save.", b("Save"), " downloads the map (stations as a game ", code(".yml"), "). Work is also autosaved in this browser, but only a saved file is safe.")
+        ),
+        h("h3", {}, "Trying a station in the game"),
+        h(
+          "ol",
+          {},
+          step("Link the server folder.", b("Game"), " → ", b("Link folder…"), " and choose the server's data folder (for a server built from source: ", code("bin/Content.Server/data"), "). Chrome and Edge only; other browsers save the file and you copy it there."),
+          step("Export.", "Start the server, join it, and press ", b("Export station here"), "."),
+          step(
+            "Load it in the game.",
+            "Open the game's console (you need admin rights; on your own server you have them). The ",
+            b("Game"),
+            " window lists the commands with a Copy button: ",
+            code("loadmap"),
+            " loads the station as a new map, ",
+            code("mapinit"),
+            " starts it (a loaded map is paused and you cannot move on it), ",
+            code("tp"),
+            " takes you to the middle of the station."
+          ),
+          step("All black?", "The station has no lights yet. ", code("togglelight"), " turns lighting off on your screen so you can see it; run it again to turn it back on."),
+          step("Bring changes back.", code("savemap"), " writes the map into the folder; ", b("Open"), " it from the ", b("Game"), " window.")
+        ),
+        h("p", { class: "muted" }, "Press ", b("?"), " for all keyboard shortcuts. The full user guide is docs/user-guide.md in the editor's repository.")
+      )
+    );
   }
 
   async function showCreditsDialog() {

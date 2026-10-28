@@ -818,6 +818,7 @@ export interface TopBarActions {
   add(): void;
   save(): void;
   showCredits(): void;
+  showGuide(): void;
   showHelp(): void;
   showGame(): void;
   showCodebase(): void;
@@ -897,6 +898,7 @@ export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement
     h("button", { class: "secondary", onclick: () => actions.showGame(), title: "Link the game server's data folder: export to the game and open what it saved" }, "Game"),
     h("button", { class: "secondary", onclick: () => actions.showCodebase(), title: "Which game codebase the palette comes from (Qlippoth Station or another SS14 fork)" }, "Codebase"),
     h("button", { class: "ghost", onclick: () => actions.showHelp(), title: "Shortcuts" }, "?"),
+    h("button", { class: "ghost", onclick: () => actions.showGuide(), title: "How to use the editor, step by step" }, "Guide"),
     h("button", { class: "ghost", onclick: () => actions.showCredits() }, "Credits")
   );
 }

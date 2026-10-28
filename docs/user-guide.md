@@ -34,7 +34,7 @@ Everything happens in your browser. Nothing is uploaded; your work stays on your
 
 | Where | What is there |
 |---|---|
-| **Top bar** | Mode switch, the map's name and size, **New**, **Open**, **Add**, **Save**, **Undo**/**Redo**, **Game**, **Codebase**, **?** (shortcuts) |
+| **Top bar** | Mode switch, the map's name and size, **New**, **Open**, **Add**, **Save**, **Undo**/**Redo**, **Game**, **Codebase**, **?** (shortcuts), **Guide** (a short version of this guide), **Credits** |
 | **Left side** | **Tools** (what the mouse does), **Layers**, **View** options and the **Checks** list (problems in the map) |
 | **Middle** | The map |
 | **Right side** | Three tabs: **Palette** (things to paint with), **Modules** (saved map parts), **Random** (random choices) |
@@ -233,10 +233,15 @@ The browser remembers the folder. Next time it may only ask you to allow it agai
    | Command | What it does |
    |---|---|
    | `loadmap 10 /your-station.yml` | Loads the station as a new map, number 10. Any unused number works. |
-   | `tp 0 0 10` | Takes you to the middle of map 10. Do this as an admin ghost. |
-   | `savemap 10 /your-station.yml` | Saves what you changed in the game back into the folder. |
+   | `mapinit 10` | Starts the map. A loaded map is paused: nothing on it moves, you included, until it is started. |
+   | `tp -22 -22 10` | Takes you to the middle of the station on map 10. The tool works out the numbers from what you painted. |
+   | `togglelight` | Turns lighting off on your screen, so a station without lights is not all black. Run it again to turn it back on. |
+   | `savemap 10 /your-station.yml true` | Saves what you changed in the game back into the folder. `true` is needed because the map was started. |
 
 4. Walk around and check it.
+
+A started map is saved as it is at that moment: random spawners have already picked their items, and things that
+only appear when a round starts are there. For changes you want to keep, make them in the tool.
 
 **Bringing in-game changes back to the tool:** after `savemap`, open **Game** again (press **Refresh** if needed).
 The file is in the **Maps in the folder** list. **Open** opens it; **Add** adds it into the map you have open.
@@ -247,7 +252,7 @@ Other browsers cannot link folders, but the steps are almost the same:
 
 1. Press **Save**. The station's `.yml` file is downloaded.
 2. Copy that file into the game server's data folder yourself.
-3. Use the same `loadmap` and `tp` commands in the game's console. The **Game** window still shows them.
+3. Use the same `loadmap`, `mapinit` and `tp` commands in the game's console. The **Game** window still shows them.
 4. After `savemap`, open the saved file from the data folder with **Open**.
 
 ### Way 3: adding the station to the game for real
@@ -277,7 +282,10 @@ If the station uses random rooms (from the **Random** tab), the package also has
 | A cell shows a **?** | The item's id is unknown to the palette. The Checks list says which one. It can come from an older map or another codebase. |
 | `loadmap` says the file does not exist | The linked folder is not the server's data folder. Link the right one, and start the path with `/`, as in `/your-station.yml`. |
 | The **Game** button cannot link a folder | Your browser does not support it. Use Chrome or Edge, or [Way 2](#way-2-quick-test-without-chrome-or-edge). |
-| `savemap` refuses to overwrite | Add `true` at the end: `savemap 10 /your-station.yml true`. |
+| `savemap` refuses to save | The map was started with `mapinit`; add `true` at the end: `savemap 10 /your-station.yml true`. |
+| After `tp` I see only space | Use the `tp` command from the **Game** window: it points at the middle of what you painted, which is not always `0 0`. |
+| I cannot move on the loaded map | The map is still paused. Run `mapinit 10` (with your map number). |
+| Everything is black | The station has no lights. Type `togglelight` to see it anyway, or place lights (Object layer). |
 | My work is gone after clearing the browser | Autosave lives in the browser. Keep important maps with **Save**, and modules with **Save project**. |
 | Add says the file is the wrong kind | A domain cannot be added to a station, or the other way round. Switch mode first. |
 
