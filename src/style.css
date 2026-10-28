@@ -1141,3 +1141,7 @@ button.warning:hover {
 .guide p {
   margin: 0;
 }
+
+.guide .commands {
+  margin-bottom: 12px;
+}

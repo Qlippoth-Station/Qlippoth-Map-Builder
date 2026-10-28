@@ -36,6 +36,17 @@ function fileName(name: string, mode: ModeId): string {
   return `${slug || mode}${MODE_INFO[mode].fileSuffix}`;
 }
 
+/** A game console command with a Copy button and what it does. */
+function command(text: string, hint: string): HTMLElement {
+  return h(
+    "div",
+    { class: "command" },
+    h("code", {}, text),
+    h("button", { type: "button", class: "ghost", title: "Copy", onclick: () => void navigator.clipboard?.writeText(text) }, "Copy"),
+    h("span", { class: "muted" }, hint)
+  );
+}
+
 function download(blob: Blob, name: string): void {
   const link = h("a", { href: URL.createObjectURL(blob), download: name });
   link.click();
@@ -513,14 +524,6 @@ function start(palette: Palette, autosaves: Autosaves): void {
     let status = "";
     let lastPath = `/${fileName(editor.doc.name, "station")}`;
 
-    const command = (text: string, hint: string) =>
-      h(
-        "div",
-        { class: "command" },
-        h("code", {}, text),
-        h("button", { type: "button", class: "ghost", title: "Copy", onclick: () => void navigator.clipboard?.writeText(text) }, "Copy"),
-        h("span", { class: "muted" }, hint)
-      );
     const commands = () => {
       const [x, y] = editor.mode === "station" ? stationCenter(editor.doc) : [0, 0];
       return h(
@@ -638,6 +641,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
     const step = (title: string, ...text: (Node | string)[]) => h("li", {}, h("strong", {}, title), " ", ...text);
     const b = (text: string) => h("strong", {}, text);
     const code = (text: string) => h("code", {}, text);
+    const station = editor.mode === "station";
+    const [x, y] = station ? stationCenter(editor.doc) : [0, 0];
     openDialog(
       "Guide",
       h(
@@ -672,8 +677,21 @@ function start(palette: Palette, autosaves: Autosaves): void {
             code("tp"),
             " takes you to the middle of the station."
           ),
-          step("All black?", "The station has no lights yet. ", code("togglelight"), " turns lighting off on your screen so you can see it; run it again to turn it back on."),
           step("Bring changes back.", code("savemap"), " writes the map into the folder; ", b("Open"), " it from the ", b("Game"), " window.")
+        ),
+        h("h3", {}, "Problems in the game"),
+        h("p", { class: "muted" }, "10 below is the map number used with loadmap; change it if you used another."),
+        h(
+          "div",
+          { class: "commands" },
+          h("p", {}, b("I only see space after tp."), " The station is not always around 0 0; go to its middle:"),
+          station
+            ? command(`tp ${x} ${y} 10`, "the middle of the station open now")
+            : h("p", { class: "muted" }, "Open the station in Station mode to see its tp command here (it is also in the Game window)."),
+          h("p", {}, b("I cannot move."), " A loaded map is paused until it is started:"),
+          command("mapinit 10", "starts the map; save it afterwards with savemap 10 /your-station.yml true"),
+          h("p", {}, b("Everything is black."), " The station has no lights yet. Turn lighting off on your screen:"),
+          command("togglelight", "run it again to turn lighting back on")
         ),
         h("p", { class: "muted" }, "Press ", b("?"), " for all keyboard shortcuts. The full user guide is docs/user-guide.md in the editor's repository.")
       )
