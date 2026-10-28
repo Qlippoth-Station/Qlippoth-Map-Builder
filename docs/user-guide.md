@@ -234,7 +234,7 @@ The browser remembers the folder. Next time it may only ask you to allow it agai
    |---|---|
    | `loadmap 10 /your-station.yml` | Loads the station as a new map, number 10. Any unused number works. |
    | `mapinit 10` | Starts the map. A loaded map is paused: nothing on it moves, you included, until it is started. |
-   | `tp -22 -22 10` | Takes you to the middle of the station on map 10. The tool works out the numbers from what you painted. |
+   | `tp -22 -22 10` | Takes you to the station on map 10: to its observer spawn point (`SpawnPointObserver`) if it has one, else to the floor tile nearest the middle of what you painted. The tool works out the numbers. |
    | `togglelight` | Turns lighting off on your screen, so a station without lights is not all black. Run it again to turn it back on. |
    | `savemap 10 /your-station.yml true` | Saves what you changed in the game back into the folder. `true` is needed because the map was started. |
 
@@ -283,7 +283,7 @@ If the station uses random rooms (from the **Random** tab), the package also has
 | `loadmap` says the file does not exist | The linked folder is not the server's data folder. Link the right one, and start the path with `/`, as in `/your-station.yml`. |
 | The **Game** button cannot link a folder | Your browser does not support it. Use Chrome or Edge, or [Way 2](#way-2-quick-test-without-chrome-or-edge). |
 | `savemap` refuses to save | The map was started with `mapinit`; add `true` at the end: `savemap 10 /your-station.yml true`. |
-| After `tp` I see only space | Use the `tp` command from the **Game** window: it points at the middle of what you painted, which is not always `0 0`. |
+| After `tp` I see only space | Use the `tp` command from the **Game** window: it points at the station (its observer spawn point, or the floor nearest its middle), which is not always at `0 0`. |
 | I cannot move on the loaded map | The map is still paused. Run `mapinit 10` (with your map number). |
 | Everything is black | The station has no lights. Type `togglelight` to see it anyway, or place lights (Object layer). |
 | My work is gone after clearing the browser | Autosave lives in the browser. Keep important maps with **Save**, and modules with **Save project**. |

@@ -19,7 +19,7 @@ import type { WorkerMessage } from "./codebase/worker";
 import { GameFolder, type FolderFile } from "./gamefolder";
 import { findItem, loadPalette, type Palette } from "./palette";
 import { autosaveText, readAutosave } from "./autosave";
-import { exportStation, stationCenter } from "./station/export";
+import { exportStation, teleportTarget } from "./station/export";
 import { exportPackage } from "./station/gamemap";
 import { importStation } from "./station/import";
 import { loadAutosaves, saveAutosave, saveLastMode, type Autosaves } from "./storage";
@@ -525,14 +525,14 @@ function start(palette: Palette, autosaves: Autosaves): void {
     let lastPath = `/${fileName(editor.doc.name, "station")}`;
 
     const commands = () => {
-      const [x, y] = editor.mode === "station" ? stationCenter(editor.doc) : [0, 0];
+      const [x, y] = editor.mode === "station" ? teleportTarget(editor.doc) : [0, 0];
       return h(
         "div",
         { class: "commands" },
         h("label", { class: "field inline" }, h("span", {}, "Map id for loadmap"), mapId),
         command(`loadmap ${mapId.value} ${lastPath}`, "loads the station as a new map (pick an unused map id)"),
         command(`mapinit ${mapId.value}`, "starts the map: a loaded map is paused, and nothing on it moves (you included) until it is started"),
-        command(`tp ${x} ${y} ${mapId.value}`, "takes you to the middle of the station (as a ghost)"),
+        command(`tp ${x} ${y} ${mapId.value}`, "takes you to the station: its observer spawn point, else its middle (as a ghost)"),
         command("togglelight", "all black? With no lights placed the station is dark; this turns lighting off on your screen (again to turn it back on)"),
         command(`savemap ${mapId.value} ${lastPath} true`, "writes your in-game changes back (true: a started map is only saved when forced)")
       );
@@ -642,7 +642,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
     const b = (text: string) => h("strong", {}, text);
     const code = (text: string) => h("code", {}, text);
     const station = editor.mode === "station";
-    const [x, y] = station ? stationCenter(editor.doc) : [0, 0];
+    const [x, y] = station ? teleportTarget(editor.doc) : [0, 0];
     openDialog(
       "Guide",
       h(
@@ -675,7 +675,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
             code("mapinit"),
             " starts it (a loaded map is paused and you cannot move on it), ",
             code("tp"),
-            " takes you to the middle of the station."
+            " takes you to the station."
           ),
           step("Bring changes back.", code("savemap"), " writes the map into the folder; ", b("Open"), " it from the ", b("Game"), " window.")
         ),
@@ -684,9 +684,9 @@ function start(palette: Palette, autosaves: Autosaves): void {
         h(
           "div",
           { class: "commands" },
-          h("p", {}, b("I only see space after tp."), " The station is not always around 0 0; go to its middle:"),
+          h("p", {}, b("I only see space after tp."), " The station is not always around 0 0; go to it:"),
           station
-            ? command(`tp ${x} ${y} 10`, "the middle of the station open now")
+            ? command(`tp ${x} ${y} 10`, "the station open now: its observer spawn point, else the floor nearest its middle")
             : h("p", { class: "muted" }, "Open the station in Station mode to see its tp command here (it is also in the Game window)."),
           h("p", {}, b("I cannot move."), " A loaded map is paused until it is started:"),
           command("mapinit 10", "starts the map; save it afterwards with savemap 10 /your-station.yml true"),

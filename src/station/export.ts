@@ -42,26 +42,50 @@ export function newSource(doc: MapDocument, template?: string): StationSource {
 }
 
 /**
- * The middle of everything painted on the station, in map coordinates (what the game's tp command takes). The grid
- * sits at the map origin for new stations, but the painted part need not be centred on it.
+ * Where the game's tp command should take you to see the station, in map coordinates: the observer spawn point if
+ * the station has one (the game puts observers there too), else the floor tile nearest the middle of everything
+ * painted. The middle alone can be empty (a U-shaped station, two separate parts); the grid's origin, at the middle of
+ * the canvas for new stations, can be far from the painted part.
  */
-export function stationCenter(doc: MapDocument, template?: string): [number, number] {
+export function teleportTarget(doc: MapDocument, template?: string): [number, number] {
   const { file, gridUid, originX, originY } = doc.station ?? newSource(doc, template);
-  let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
-  for (const layer of ["floor", "structure", "object"] as const) {
-    for (const key of doc.layers[layer].keys()) {
+  // Cell coordinates; a cell's middle is +0.5.
+  let target: [number, number] | undefined;
+  for (const [key, brush] of doc.layers.object) {
+    if (itemsOf(brush).some((item) => item.id.startsWith("SpawnPointObserver"))) {
       const [x, y] = parseKey(key);
-      [minX, minY, maxX, maxY] = [Math.min(minX, x), Math.min(minY, y), Math.max(maxX, x), Math.max(maxY, y)];
+      target = [x + 0.5, y + 0.5];
+      break;
     }
   }
-  if (minX > maxX) [minX, minY, maxX, maxY] = [0, 0, doc.width - 1, doc.height - 1];
-  const [x, y] = [(minX + maxX + 1) / 2 + originX, (minY + maxY + 1) / 2 + originY];
+  if (!target) {
+    let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const layer of ["floor", "structure", "object"] as const) {
+      for (const key of doc.layers[layer].keys()) {
+        const [x, y] = parseKey(key);
+        [minX, minY, maxX, maxY] = [Math.min(minX, x), Math.min(minY, y), Math.max(maxX, x), Math.max(maxY, y)];
+      }
+    }
+    if (minX > maxX) [minX, minY, maxX, maxY] = [0, 0, doc.width - 1, doc.height - 1];
+    const [mx, my] = [(minX + maxX + 1) / 2, (minY + maxY + 1) / 2];
+    target = [mx, my];
+    if (!doc.layers.floor.has(`${Math.floor(mx)},${Math.floor(my)}`)) {
+      let best = Infinity;
+      for (const key of doc.layers.floor.keys()) {
+        const [x, y] = parseKey(key);
+        const distance = (x + 0.5 - mx) ** 2 + (y + 0.5 - my) ** 2;
+        if (distance < best) [best, target] = [distance, [x + 0.5, y + 0.5]];
+      }
+    }
+  }
+  const [x, y] = [target[0] + originX, target[1] + originY];
   // A grid of an imported map can be moved or turned on its map.
   const grid = file.byUid.get(gridUid);
   const [gx, gy] = grid?.parent !== null && grid?.pos ? grid.pos : [0, 0];
   const rot = grid?.parent !== null ? grid?.rot ?? 0 : 0;
   const [cos, sin] = [Math.cos(rot), Math.sin(rot)];
-  return [Math.round(gx + x * cos - y * sin), Math.round(gy + x * sin + y * cos)];
+  const round = (value: number) => Math.round(value * 10) / 10 || 0;
+  return [round(gx + x * cos - y * sin), round(gy + x * sin + y * cos)];
 }
 
 export function exportStation(doc: MapDocument, palette: Palette, template?: string): ExportResult {
