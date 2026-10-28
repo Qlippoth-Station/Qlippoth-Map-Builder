@@ -312,18 +312,20 @@ export function buildSidebar(editor: Editor, view: MapView, actions: { exportPac
     window.clearTimeout(validateTimer);
     validateTimer = window.setTimeout(() => {
       const list = editor.validate();
-      warningTitle.textContent = list.length ? `Checks · ${list.length}` : "Checks";
+      const errors = list.filter((warning) => warning.level === "error").length;
+      warningTitle.textContent = list.length ? `Checks · ${list.length}${errors ? ` (${errors} critical)` : ""}` : "Checks";
       if (list.length === 0) {
         clear(warnings, h("p", { class: "ok" }, "No problems found."));
         return;
       }
       clear(
         warnings,
-        ...list.slice(0, 50).map((warning) =>
-          warning.at
-            ? h("button", { class: "warning", onclick: () => view.focus(...warning.at!) }, warning.message, h("span", { class: "at" }, `${warning.at[0]}, ${warning.at[1]}`))
-            : h("div", { class: "warning" }, warning.message)
-        )
+        ...list.slice(0, 50).map((warning) => {
+          const className = warning.level === "error" ? "warning error" : "warning";
+          return warning.at
+            ? h("button", { class: className, onclick: () => view.focus(...warning.at!) }, warning.message, h("span", { class: "at" }, `${warning.at[0]}, ${warning.at[1]}`))
+            : h("div", { class: className }, warning.message);
+        })
       );
     }, 150);
   };

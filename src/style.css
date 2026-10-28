@@ -368,6 +368,10 @@ select {
   background: var(--panel-raised);
 }
 
+.warning.error {
+  border-left-color: var(--danger);
+}
+
 button.warning:hover {
   border-color: var(--accent);
 }

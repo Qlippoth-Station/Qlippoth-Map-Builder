@@ -304,7 +304,9 @@ function start(palette: Palette, autosaves: Autosaves): void {
     exportPackage() {
       editor.commitFloating();
       const problems = editor.validate();
-      if (problems.length && !window.confirm(`The checks list ${problems.length} problem(s). Export the package anyway?`)) return;
+      const critical = problems.filter((problem) => problem.level === "error").length;
+      const summary = `${problems.length} problem(s)${critical ? `, ${critical} of them critical (red)` : ""}`;
+      if (problems.length && !window.confirm(`The checks list ${summary}. Export the package anyway?`)) return;
       const base = fileName(editor.doc.name, "station").replace(/\.yml$/, "");
       try {
         const moduleDocument = (id: string) => {
@@ -596,6 +598,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
               title: station ? "Write the station as a .yml into the folder" : "Only stations can be loaded in the game",
               onclick: async () => {
                 editor.commitFloating();
+                const critical = editor.validate().filter((problem) => problem.level === "error").length;
+                if (critical && !window.confirm(`The checks list ${critical} critical (red) problem(s): the game may not load the station, or it cannot be played. Export anyway?`)) return;
                 try {
                   const { text, summary } = exportStation(editor.doc, palette);
                   lastPath = await gameFolder.write(fileName(editor.doc.name, "station"), text);
