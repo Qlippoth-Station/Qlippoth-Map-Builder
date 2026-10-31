@@ -2,6 +2,7 @@
 // See docs/format.md for the on-disk formats.
 
 import { MODE_INFO, type ModeId } from "./modes";
+import type { DepartmentId } from "./station/departments";
 import type { StationSource } from "./station/source";
 
 export const LAYERS = ["floor", "structure", "object", "marker"] as const;
@@ -98,6 +99,10 @@ export interface MapDocument {
   station?: StationSource;
   /** Stations: Draft runs the basic checks only; Exportable adds the checks a playable station needs. */
   profile?: StationProfile;
+  /** Stations: a whole station (default) or one department of it, which changes the checks. */
+  stationKind?: StationKind;
+  /** Department submode: which department is built and which of its areas this map holds. */
+  department?: DepartmentSettings;
   /** Modules placed in this map, so they can be updated to a newer version of the module later. */
   instances?: ModuleInstance[];
   /** Stations: areas filled with a random room each round. */
@@ -122,6 +127,15 @@ export interface ModuleInstance {
 }
 
 export type StationProfile = "draft" | "exportable";
+
+/** Station submodes: a whole station gets the station-wide checks, a department part its department's checks. */
+export type StationKind = "station" | "department";
+
+export interface DepartmentSettings {
+  id: DepartmentId;
+  /** Ticked areas (sub-departments) of the department, by area id. */
+  areas: string[];
+}
 
 /**
  * File format id and current version per mode. Domain version 2 added entry settings and entry order;

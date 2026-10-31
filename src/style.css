@@ -357,23 +357,108 @@ select {
   gap: 4px;
 }
 
+/* --group comes from the group or department; --group-ink is how it is drawn (darker on a light theme). */
+.warning-group,
+.department-picker {
+  --group-ink: var(--group);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .warning-group,
+  :root:not([data-theme="dark"]) .department-picker {
+    --group-ink: color-mix(in srgb, var(--group) 72%, #000);
+  }
+}
+
+.warning-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.warning-group + .warning-group {
+  margin-top: 6px;
+}
+
+.warning-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.warning-group.department h3 {
+  color: var(--text);
+}
+
+.group-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--group-ink);
+}
+
+/* A department's group is a square: department checks stand apart from the station-wide groups. */
+.warning-group.department .group-dot {
+  border-radius: 2px;
+}
+
+.group-name {
+  flex: 1;
+}
+
+.group-count {
+  font: 11px var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .warning {
   display: flex;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 6px;
   text-align: left;
   padding: 5px 8px;
   border-radius: var(--radius);
-  border-left: 3px solid var(--warning);
+  border-left: 3px solid var(--group-ink, var(--warning));
   background: var(--panel-raised);
 }
 
+.warning .message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.warning .level {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font: 700 10px/14px var(--mono);
+  text-align: center;
+  color: var(--warning);
+}
+
+/* Critical checks: a red "!" and a faint red wash; the left border keeps the group's color. */
 .warning.error {
-  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--panel-raised));
+}
+
+.warning.error .level {
+  background: var(--danger);
+  color: #fff;
 }
 
 button.warning:hover {
   border-color: var(--accent);
+  border-left-color: var(--group-ink, var(--accent));
 }
 
 .warning .at {
@@ -385,6 +470,25 @@ button.warning:hover {
 .ok {
   margin: 0;
   color: var(--ok);
+}
+
+/* Station submode and department */
+
+.department-picker {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--group-ink);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+}
+
+.department-areas {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* Palette */

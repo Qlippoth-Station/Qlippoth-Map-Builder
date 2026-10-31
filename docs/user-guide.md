@@ -111,13 +111,14 @@ picture on the map shows the direction.
 The **Checks** list on the left tells you about problems: unknown items, items the game renamed or removed, missing
 spawn points, and so on. Click a problem to jump to it.
 
-Problems come in two colours, and the red ones are listed first:
+Problems are listed in groups (spawn points, power & gravity, atmosphere, lighting, construction, game data), each with
+its own colour on the left edge. Inside a group the critical ones come first, and two levels tell them apart:
 
-- **Red (critical)**: the game will not load the map, or the map cannot really be played. For example an unknown
+- **Critical (red !)**: the game will not load the map, or the map cannot really be played. For example an unknown
   item (the game refuses the whole map), a domain without an Entry marker or with a marker in space or in a wall, or
   an exportable station without power, gravity, late-join or job spawn points, or with a module edge open to space.
   Exporting to the game asks you to confirm while there are red problems.
-- **Yellow (warning)**: the map works, but something is odd or missing. For example no lights (the station is pitch
+- **Warning (yellow dot)**: the map works, but something is odd or missing. For example no lights (the station is pitch
   black), a renamed or removed item, no air vents, or entities standing in space.
 
 Stations have two **profiles**, switched above the Checks list:
@@ -125,6 +126,15 @@ Stations have two **profiles**, switched above the Checks list:
 - **Draft** (normal): only the basic checks (unknown, renamed or removed items, lights). Use it while you work and for quick tests.
 - **Exportable**: also checks what a playable station needs (job spawn points, power, air, gravity, nothing standing
   in space). Use it before you hand in a finished station.
+
+Stations also have two **submodes**, switched at the top of the Checks list:
+
+- **Station** (normal): a whole station, with the station-wide checks.
+- **Department**: one department, built on its own to be added to a station later. Station-wide problems (gravity
+  generator, SMES, late-join spawn, ...) are not listed. Choose the department, then tick the parts it has, for
+  example *Engineering*, *Engine & power storage*, *Atmospherics*. The checks then ask for what that department has in
+  a normal station: its job spawn points, lockers, vendors and machines. The department's problems are shown first,
+  in the department's colour.
 
 ## Changing what you made
 

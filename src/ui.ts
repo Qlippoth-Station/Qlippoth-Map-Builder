@@ -1,10 +1,12 @@
 import { ENTRY_MODES, LAYER_NAMES, MAX_COHORT, MIN_SIZE, itemsOf, parseKey, type EntryMode, type LayerId } from "./document";
-import { ACTIONS, ACTION_INFO, SHAPES, SHAPE_INFO, type Editor, type Topic } from "./editor";
+import { ACTIONS, ACTION_INFO, SHAPES, SHAPE_INFO, type Editor, type Topic, type Warning } from "./editor";
 import { clear, h } from "./dom";
 import { MODES, MODE_INFO, type ModeId } from "./modes";
 import type { ModuleLibrary, ModuleRecord } from "./modules";
 import { clampWeight, SET_PREFIX, type RandomSet, type RandomSetLibrary } from "./randomsets";
 import { findItem, iconOrigin, itemNotes, type Palette, type PaletteItem } from "./palette";
+import { CHECK_GROUP_INFO } from "./station/checks";
+import { DEPARTMENTS, DEPARTMENT_INFO, type DepartmentId } from "./station/departments";
 import type { MapView } from "./view";
 
 const PALETTE_LIMIT = 400;
@@ -288,24 +290,73 @@ export function buildSidebar(editor: Editor, view: MapView, actions: { exportPac
     );
 
   let validateTimer = 0;
-  // Stations: Draft / Exportable profile, and the export package once the station is meant to be played.
+  // Stations: Station / Department submode (which checks apply), the department and its areas, the
+  // Draft / Exportable profile, and the export package once the station is meant to be played.
   const renderProfile = () => {
     profile.hidden = editor.mode !== "station";
     if (profile.hidden) return;
-    const button = (id: "draft" | "exportable", label: string, hint: string) =>
-      h("button", { class: editor.profile === id ? "active" : "", "aria-pressed": String(editor.profile === id), title: hint, onclick: () => editor.setProfile(id) }, label);
+    const switchButton = (active: boolean, label: string, hint: string, onclick: () => void) =>
+      h("button", { class: active ? "active" : "", "aria-pressed": String(active), title: hint, onclick }, label);
+    const kind = editor.stationKind;
+    const department = kind === "department" ? editor.doc.department : undefined;
+    const info = department ? DEPARTMENT_INFO[department.id] : undefined;
     clear(
       profile,
       h(
         "div",
+        { class: "mode-switch", role: "group", "aria-label": "Station submode", "data-guide": "submode" },
+        switchButton(kind === "station", "Station", "A whole station: station-wide checks (late-join spawn, gravity, SMES, ...)", () => editor.setStationKind("station")),
+        switchButton(kind === "department", "Department", "One department: its own checks, without the station-wide ones", () => editor.setStationKind("department"))
+      ),
+      info && department
+        ? h(
+            "div",
+            { class: "department-picker", style: `--group: ${info.color}` },
+            h(
+              "label",
+              { class: "field" },
+              h("span", {}, "Department"),
+              h(
+                "select",
+                { "aria-label": "Department", onchange: (event: Event) => editor.setDepartment((event.target as HTMLSelectElement).value as DepartmentId) },
+                ...DEPARTMENTS.map((id) => h("option", { value: id, selected: id === department.id }, DEPARTMENT_INFO[id].name))
+              )
+            ),
+            h(
+              "div",
+              { class: "department-areas", role: "group", "aria-label": `${info.name} areas` },
+              ...info.areas.map((area) =>
+                h(
+                  "label",
+                  { class: "check", title: area.hint },
+                  h("input", {
+                    type: "checkbox",
+                    checked: department.areas.includes(area.id),
+                    onchange: (event: Event) => editor.setDepartmentArea(area.id, (event.target as HTMLInputElement).checked),
+                  }),
+                  h("span", {}, area.name)
+                )
+              )
+            )
+          )
+        : null,
+      h(
+        "div",
         { class: "mode-switch", role: "group", "aria-label": "Profile" },
-        button("draft", "Draft", "Basic checks only, for quick work and testing"),
-        button("exportable", "Exportable", "All checks a playable station needs, and the export package")
+        switchButton(editor.profile === "draft", "Draft", "Basic checks only, for quick work and testing", () => editor.setProfile("draft")),
+        switchButton(editor.profile === "exportable", "Exportable", "All checks a playable station needs, and the export package", () => editor.setProfile("exportable"))
       ),
       editor.profile === "exportable"
         ? h("button", { class: "secondary", title: "Map .yml, gameMap prototype and a README in one .zip", onclick: () => actions.exportPackage() }, "Export package")
         : null
     );
+  };
+
+  /** Name and color of a check's group: its department, or one of the station-wide groups. */
+  const groupOf = (warning: Warning) => {
+    if (warning.department) return { key: `department:${warning.department}`, ...DEPARTMENT_INFO[warning.department], department: true };
+    const group = warning.group ?? "gamedata";
+    return { key: group, ...CHECK_GROUP_INFO[group], department: false };
   };
 
   const renderWarnings = () => {
@@ -318,13 +369,36 @@ export function buildSidebar(editor: Editor, view: MapView, actions: { exportPac
         clear(warnings, h("p", { class: "ok" }, "No problems found."));
         return;
       }
+      // validate() sorts by group (department first), so each group is one run of the list.
+      const groups: { group: ReturnType<typeof groupOf>; items: Warning[] }[] = [];
+      for (const warning of list.slice(0, 80)) {
+        const group = groupOf(warning);
+        if (groups.at(-1)?.group.key !== group.key) groups.push({ group, items: [] });
+        groups.at(-1)!.items.push(warning);
+      }
       clear(
         warnings,
-        ...list.slice(0, 50).map((warning) => {
-          const className = warning.level === "error" ? "warning error" : "warning";
-          return warning.at
-            ? h("button", { class: className, onclick: () => view.focus(...warning.at!) }, warning.message, h("span", { class: "at" }, `${warning.at[0]}, ${warning.at[1]}`))
-            : h("div", { class: className }, warning.message);
+        ...groups.map(({ group, items }) => {
+          const critical = items.filter((warning) => warning.level === "error").length;
+          return h(
+            "div",
+            { class: `warning-group${group.department ? " department" : ""}`, style: `--group: ${group.color}` },
+            h(
+              "h3",
+              {},
+              h("span", { class: "group-dot", "aria-hidden": "true" }),
+              h("span", { class: "group-name" }, group.name),
+              h("span", { class: "group-count" }, critical ? `${items.length} · ${critical} critical` : String(items.length))
+            ),
+            ...items.map((warning) => {
+              const className = warning.level === "error" ? "warning error" : "warning";
+              const level = h("span", { class: "level", title: warning.level === "error" ? "Critical" : "Warning" }, warning.level === "error" ? "!" : "·");
+              const message = h("span", { class: "message" }, warning.message);
+              return warning.at
+                ? h("button", { class: className, onclick: () => view.focus(...warning.at!) }, level, message, h("span", { class: "at" }, `${warning.at[0]}, ${warning.at[1]}`))
+                : h("div", { class: className }, level, message);
+            })
+          );
         })
       );
     }, 150);

@@ -307,7 +307,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
       editor.commitFloating();
       const problems = editor.validate();
       const critical = problems.filter((problem) => problem.level === "error").length;
-      const summary = `${problems.length} problem(s)${critical ? `, ${critical} of them critical (red)` : ""}`;
+      const summary = `${problems.length} problem(s)${critical ? `, ${critical} of them critical` : ""}`;
       if (problems.length && !window.confirm(`The checks list ${summary}. Export the package anyway?`)) return;
       const base = fileName(editor.doc.name, "station").replace(/\.yml$/, "");
       try {
@@ -679,7 +679,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
               onclick: async () => {
                 editor.commitFloating();
                 const critical = editor.validate().filter((problem) => problem.level === "error").length;
-                if (critical && !window.confirm(`The checks list ${critical} critical (red) problem(s): the game may not load the station, or it cannot be played. Export anyway?`)) return;
+                if (critical && !window.confirm(`The checks list ${critical} critical problem(s): the game may not load the station, or it cannot be played. Export anyway?`)) return;
                 try {
                   const { text, summary } = exportStation(editor.doc, palette);
                   lastPath = await gameFolder.write(fileName(editor.doc.name, "station"), text);
@@ -805,7 +805,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
         targets: ["checks"],
         body: [
           p("The checks list problems in the map. Click one to jump to the place it is about."),
-          p("Red lines are critical: the map will not load or cannot be played until they are fixed. Yellow lines are warnings worth a look."),
+          p("Checks are grouped (spawn points, power, atmosphere, ...), each group in its own color. A red ! is critical: the map will not load or cannot be played until it is fixed. The others are warnings worth a look."),
           p(
             "Stations have two profiles here. ",
             ui("Draft"),
@@ -814,6 +814,12 @@ function start(palette: Palette, autosaves: Autosaves): void {
             " runs every check a playable station needs and adds the ",
             ui("Export package"),
             " button."
+          ),
+          p(
+            ui("Station"),
+            " checks a whole station. ",
+            ui("Department"),
+            " checks one department on its own: pick it and tick its areas; its checks are listed first, in its color, and the station-wide ones (gravity, SMES, late-join) are left out."
           ),
         ],
       },
