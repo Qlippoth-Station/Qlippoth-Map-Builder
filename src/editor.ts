@@ -21,12 +21,14 @@ import {
   type MapDocument,
   type ModuleInstance,
   type RoomSlot,
+  type StationKind,
   type StationProfile,
 } from "./document";
 import { pickEntry, SET_PREFIX, spawnerData, type RandomSetLibrary } from "./randomsets";
 import { MODE_INFO, type ModeId } from "./modes";
 import { findItem, type Palette } from "./palette";
-import { exportableChecks, lightChecks, moduleEdgeChecks } from "./station/checks";
+import { CHECK_GROUPS, departmentChecks, exportableChecks, lightChecks, moduleEdgeChecks, type CheckGroup } from "./station/checks";
+import { defaultAreas, DEPARTMENT_INFO, type DepartmentId } from "./station/departments";
 
 /** What a click does. */
 export const ACTIONS = ["brush", "erase", "select"] as const;
@@ -64,8 +66,12 @@ type Change =
 export interface Warning {
   message: string;
   at?: [number, number];
-  /** "error": the map does not load or cannot be played (shown red); otherwise a warning (yellow). */
+  /** "error": the map does not load or cannot be played (critical); otherwise a warning. */
   level?: "error";
+  /** The group of a check that is not about one department (spawn points, power, ...). */
+  group?: CheckGroup;
+  /** Department submode: the department a check is about. */
+  department?: DepartmentId;
 }
 
 /**
@@ -929,11 +935,45 @@ export class Editor {
     this.emit("document");
   }
 
+  /** Stations: whole station or department part. */
+  get stationKind(): StationKind {
+    return this.doc.stationKind ?? "station";
+  }
+
+  setStationKind(kind: StationKind): void {
+    this.doc.stationKind = kind;
+    if (kind === "department") this.doc.department ??= { id: "engineering", areas: defaultAreas("engineering") };
+    this.emit("document");
+  }
+
+  /** Department submode: picks the department; its areas start as the default ones. */
+  setDepartment(id: DepartmentId): void {
+    if (this.doc.department?.id === id) return;
+    this.doc.department = { id, areas: defaultAreas(id) };
+    this.emit("document");
+  }
+
+  /** Department submode: ticks or unticks one area of the department. */
+  setDepartmentArea(area: string, on: boolean): void {
+    const department = this.doc.department;
+    if (!department) return;
+    const areas = new Set(department.areas);
+    if (on) areas.add(area);
+    else areas.delete(area);
+    // Keep the department's own order.
+    department.areas = DEPARTMENT_INFO[department.id].areas.map((info) => info.id).filter((id) => areas.has(id));
+    this.emit("document");
+  }
+
   validate(): Warning[] {
     const warnings: Warning[] = [];
     if (this.mode === "domain") this.validateDomain(warnings);
-    if (this.mode === "station" && this.profile === "exportable") warnings.push(...exportableChecks(this.doc, this.palette));
-    if (this.mode === "station") warnings.push(...moduleEdgeChecks(this.doc, this.palette), ...lightChecks(this.doc, this.palette));
+    if (this.mode === "station") {
+      const department = this.stationKind === "department" ? this.doc.department : undefined;
+      if (department) warnings.push(...departmentChecks(this.doc, department.id, department.areas));
+      if (this.profile === "exportable") warnings.push(...exportableChecks(this.doc, this.palette, !department));
+      warnings.push(...moduleEdgeChecks(this.doc, this.palette), ...lightChecks(this.doc, this.palette));
+    }
 
     // One warning per id and layer, pointing at its first cell.
     for (const layer of this.layers) {
@@ -943,17 +983,16 @@ export class Editor {
       }
       for (const [id, at] of firstSeen) {
         const item = this.palette.byLayer[layer].get(id);
-        if (item?.flags?.noMap) warnings.push({ message: `"${id}" is marked Do not map in the game.`, at });
+        if (item?.flags?.noMap) warnings.push({ message: `"${id}" is marked Do not map in the game.`, at, group: "gamedata" });
         if (item) continue;
         const renamed = this.palette.migrations.get(id);
-        if (renamed === null) warnings.push({ message: `"${id}" was removed from the game; it disappears when the map loads.`, at });
-        else if (renamed && findItem(this.palette, layer, id)) warnings.push({ message: `"${id}" was renamed to "${renamed}" in the game.`, at });
+        if (renamed === null) warnings.push({ message: `"${id}" was removed from the game; it disappears when the map loads.`, at, group: "gamedata" });
+        else if (renamed && findItem(this.palette, layer, id)) warnings.push({ message: `"${id}" was renamed to "${renamed}" in the game.`, at, group: "gamedata" });
         // The game refuses to load a map with an entity or tile it does not know.
-        else warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette); the game will not load the map.`, at, level: "error" });
+        else warnings.push({ message: `Unknown ${layer} id "${id}" (not in the current palette); the game will not load the map.`, at, level: "error", group: "gamedata" });
       }
     }
-    // Errors first; the sort keeps the order within each level.
-    return warnings.sort((a, b) => Number(b.level === "error") - Number(a.level === "error"));
+    return sortWarnings(warnings);
   }
 
   /** Q-Gate rules: at least one entry, a Qlippoth spot, markers on walkable floor. */
@@ -961,18 +1000,27 @@ export class Editor {
     const markers = this.doc.layers.marker;
     const count = (id: string) => [...markers.values()].flatMap(itemsOf).filter((item) => item.id === id).length;
 
-    if (count(ENTRY_ID) === 0) warnings.push({ message: "No Entry marker: players have nowhere to arrive.", level: "error" });
-    if (count("QlippothSpot") === 0) warnings.push({ message: "No Qlippoth spot marker.", level: "error" });
+    if (count(ENTRY_ID) === 0) warnings.push({ message: "No Entry marker: players have nowhere to arrive.", level: "error", group: "markers" });
+    if (count("QlippothSpot") === 0) warnings.push({ message: "No Qlippoth spot marker.", level: "error", group: "markers" });
 
     for (const [key] of markers) {
       const [x, y] = parseKey(key);
-      if (!this.doc.layers.floor.has(key)) warnings.push({ message: "Marker without a floor tile: it is in space.", at: [x, y], level: "error" });
+      if (!this.doc.layers.floor.has(key)) warnings.push({ message: "Marker without a floor tile: it is in space.", at: [x, y], level: "error", group: "markers" });
       const structure = itemsOf(this.doc.layers.structure.get(key));
       if (structure.some((item) => this.palette.byLayer.structure.get(item.id)?.category === "Structures/Walls")) {
-        warnings.push({ message: "Marker inside a wall: whoever arrives there is stuck.", at: [x, y], level: "error" });
+        warnings.push({ message: "Marker inside a wall: whoever arrives there is stuck.", at: [x, y], level: "error", group: "markers" });
       }
     }
   }
+}
+
+/**
+ * Department checks first, then the groups in their fixed order; critical ones first within each.
+ * The sort is stable, so checks keep their order otherwise.
+ */
+function sortWarnings(warnings: Warning[]): Warning[] {
+  const rank = (warning: Warning) => (warning.department ? -1 : CHECK_GROUPS.indexOf(warning.group ?? "gamedata"));
+  return warnings.sort((a, b) => rank(a) - rank(b) || Number(b.level === "error") - Number(a.level === "error"));
 }
 
 function invert(change: Change): Change {

@@ -102,6 +102,26 @@ Stations have two profiles, switched above the *Checks* list:
   direction in one cell), job spawn points, late-join and observer spawn points, gravity generator, SMES, substation,
   APC, air vents and scrubbers.
 
+### Station and Department submodes
+
+Above the profile, stations switch between two submodes that decide which checks apply:
+
+- **Station**: a whole station. The Exportable profile adds the station-wide checks above.
+- **Department**: one department of a station, built on its own. The station-wide checks (late-join and observer
+  spawns, job spawn points in general, gravity generator, SMES, substation) are left out; APCs, air vents and
+  scrubbers stay, since every room needs them. Pick the department (Engineering, Medical, Science, Security, Cargo,
+  Service, Command) and tick the areas the part holds (e.g. Engineering: main room, engine & power storage,
+  Atmospherics, telecommunications). Each area checks what a classic SS14 station has there: the jobs' spawn points,
+  lockers and vendors, and the machines the department cannot work without (chemical dispenser and ChemMaster,
+  R&D server and protolathe, salvage magnet, microwave, communications console, ...). Some checks only apply once
+  something else is placed (an emitter and containment once there is a singularity). Department checks run in both
+  profiles; the lists were checked against the game's own station maps, which pass them.
+
+Checks are listed in groups, each with its own color: in the Department submode the department's checks come first,
+in the department's game color; then the station-wide groups, *Spawn points*, *Power & gravity*, *Atmosphere*,
+*Lighting*, *Construction* and *Game data*, in colors kept apart from the department colors. A red **!** marks a
+critical check in any group.
+
 In the Exportable profile **Export package** downloads a `.zip` laid out like the game repository: the map under
 `Resources/Maps/`, a `gameMap` prototype under `Resources/Prototypes/Maps/` (station id from the grid's
 `BecomesStation`, job slots counted from the job spawn points) and a README with the steps to add it to the rotation.
