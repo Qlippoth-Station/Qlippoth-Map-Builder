@@ -1123,29 +1123,348 @@ button.warning:hover {
   color: inherit;
 }
 
-/* ---- Guide dialog ----------------------------------------------------------------------------- */
+/* ---- Guide: step-by-step tour over the editor -------------------------------------------------- */
 
-.guide {
-  max-width: 640px;
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
 }
 
-.guide h3 {
-  margin: 4px 0 6px;
-  font-size: 13px;
+.tour-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
-.guide ol {
-  margin: 0 0 12px;
-  padding-left: 20px;
+.tour-dim {
+  fill: rgba(8, 9, 12, 0.62);
+}
+
+.tour-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  animation: tour-pulse 1.6s ease-in-out infinite;
+}
+
+.tour-arrow {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.tour-arrowhead {
+  fill: var(--accent);
+}
+
+@keyframes tour-pulse {
+  0%,
+  100% {
+    stroke-opacity: 1;
+    stroke-width: 3;
+  }
+  50% {
+    stroke-opacity: 0.55;
+    stroke-width: 6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring {
+    animation: none;
+  }
+}
+
+.tour-card {
+  position: absolute;
+  width: min(580px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 26px 32px 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.tour-step {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.tour-card h2.tour-title {
+  margin: 2px 0 16px;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+
+.tour-body p {
+  margin: 0 0 14px;
+}
+
+.tour-body code {
+  font-size: 15px;
+}
+
+/* Button and panel names: same weight as the text, set apart by a light frame. */
+.tour-ui {
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-raised);
+  white-space: nowrap;
+}
+
+kbd.tour-key {
+  font-size: 15px;
+  color: var(--text);
+  padding: 0 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.tour-note {
+  font-size: 16px;
+  color: var(--text-muted);
+}
+
+.tour-commands {
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.tour-commands .command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+}
+
+.tour-commands .command button {
+  font-size: 14px;
+  padding: 3px 10px;
+  border-color: var(--border);
+}
+
+.tour-commands .command code {
+  font-size: 15px;
+  padding: 4px 8px;
+}
+
+.tour-commands .command .muted {
+  flex-basis: 100%;
+  font-size: 16px;
+}
+
+.tour-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.tour-nav {
+  font-size: 16px;
+  padding: 9px 18px;
+  white-space: nowrap;
+}
+
+.tour-dots {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tour-dot {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: var(--border);
+}
+
+.tour-dot:hover {
+  background: var(--text-muted);
+}
+
+.tour-dot.active {
+  background: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .tour-card {
+    padding: 20px 18px 16px;
+    font-size: 17px;
+  }
+
+  .tour-dots {
+    display: none;
+  }
+
+  .tour-footer {
+    justify-content: space-between;
+  }
+}
+
+/* ---- Codebase switch summary ------------------------------------------------------------------ */
+
+.dialog:has(.diff-totals) {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.diff-lead {
+  font-size: 14px;
+}
+
+.diff-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.diff-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+}
+
+.diff-total.removed {
+  border-left-color: var(--danger);
+}
+
+.diff-total.added {
+  border-left-color: var(--ok);
+}
+
+.diff-number {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.diff-total.removed .diff-number {
+  color: var(--danger);
+}
+
+.diff-total.added .diff-number {
+  color: var(--ok);
+}
+
+.diff-section {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.guide p {
+.diff-groups,
+.diff-items {
+  list-style: none;
   margin: 0;
+  padding: 0;
 }
 
-.guide .commands {
-  margin-bottom: 12px;
+.diff-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.diff-groups summary,
+.diff-rest > summary {
+  cursor: pointer;
+}
+
+.diff-groups summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--radius);
+}
+
+.diff-groups summary:hover {
+  background: var(--panel-raised);
+}
+
+.diff-file {
+  font: 12px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.diff-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.removed .diff-count {
+  color: var(--danger);
+}
+
+.added .diff-count {
+  color: var(--ok);
+}
+
+.diff-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px 8px 22px;
+}
+
+.diff-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.diff-items .muted {
+  font: 11px var(--mono);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.button-row.end {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.codebases:has(.diff-totals) {
+  max-width: none;
+}
+
+.diff-groups summary {
+  list-style: none;
+}
+
+.diff-groups summary::-webkit-details-marker {
+  display: none;
+}
+
+.diff-groups summary > :first-child::before {
+  content: "▸ ";
+  color: var(--text-muted);
+}
+
+.diff-groups details[open] > summary > :first-child::before {
+  content: "▾ ";
 }

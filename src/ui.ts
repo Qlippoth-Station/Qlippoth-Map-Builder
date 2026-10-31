@@ -43,7 +43,7 @@ export function buildSidebar(editor: Editor, view: MapView, actions: { exportPac
   const options = h("div", { class: "options" });
   const warnings = h("div", { class: "warnings" });
   const warningTitle = h("h2", {}, "Checks");
-  const profile = h("div", { class: "profile" });
+  const profile = h("div", { class: "profile", "data-guide": "profile" });
 
   const toolButton = (info: { name: string; key: string; hint: string }, active: boolean, onclick: () => void) =>
     h(
@@ -352,13 +352,13 @@ export function buildSidebar(editor: Editor, view: MapView, actions: { exportPac
   return h(
     "aside",
     { class: "sidebar left" },
-    h("section", {}, h("h2", {}, "Tools"), tools),
+    h("section", { "data-guide": "tools" }, h("h2", {}, "Tools"), tools),
     selectionSection,
     cellSection,
-    h("section", {}, h("h2", {}, "Layers"), layers),
+    h("section", { "data-guide": "layers" }, h("h2", {}, "Layers"), layers),
     entrySection,
-    h("section", {}, h("h2", {}, "View"), options),
-    h("section", { class: "grow" }, warningTitle, profile, warnings)
+    h("section", { "data-guide": "view" }, h("h2", {}, "View"), options),
+    h("section", { class: "grow", "data-guide": "checks" }, warningTitle, profile, warnings)
   );
 }
 
@@ -366,9 +366,9 @@ export function buildSidebar(editor: Editor, view: MapView, actions: { exportPac
 
 export function buildPalettePanel(editor: Editor): HTMLElement {
   const palette = editor.palette;
-  const search = h("input", { type: "search", placeholder: "Search name or id  ( / )", "aria-label": "Search palette", class: "search" });
+  const search = h("input", { type: "search", placeholder: "Search name or id  ( / )", "aria-label": "Search palette", class: "search", "data-guide": "palette-search" });
   const category = h("select", { "aria-label": "Category" });
-  const list = h("div", { class: "palette-list", role: "listbox", "aria-label": "Palette items" });
+  const list = h("div", { class: "palette-list", role: "listbox", "aria-label": "Palette items", "data-guide": "palette-list" });
   const title = h("h2", {});
   const selected = h("div", { class: "selected-item" });
   const more = h("p", { class: "more" });
@@ -493,7 +493,7 @@ export function buildRightSidebar(
     modules: buildModulesPanel(editor, library, view, actions),
     random: buildRandomPanel(editor, sets, library, view, actions),
   };
-  const tabs = h("div", { class: "tabs", role: "tablist" });
+  const tabs = h("div", { class: "tabs", role: "tablist", "data-guide": "tabs" });
   let shown: keyof typeof panels = "palette";
   const render = () => {
     for (const [tab, panel] of Object.entries(panels)) panel.hidden = tab !== shown;
@@ -827,13 +827,13 @@ export interface TopBarActions {
 }
 
 export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement {
-  const name = h("input", { class: "doc-name", spellcheck: false });
-  const modes = h("div", { class: "mode-switch", role: "group", "aria-label": "Mode" });
+  const name = h("input", { class: "doc-name", spellcheck: false, "data-guide": "name" });
+  const modes = h("div", { class: "mode-switch", role: "group", "aria-label": "Mode", "data-guide": "modes" });
   const width = h("input", { type: "number", min: MIN_SIZE, "aria-label": "Width", class: "size" });
   const height = h("input", { type: "number", min: MIN_SIZE, "aria-label": "Height", class: "size" });
   const undo = h("button", { class: "secondary", title: "Undo (Ctrl+Z)", onclick: () => editor.undo() }, "Undo");
   const redo = h("button", { class: "secondary", title: "Redo (Ctrl+Y)", onclick: () => editor.redo() }, "Redo");
-  const saveButton = h("button", { class: "primary", title: "Download .json (Ctrl+S)", onclick: () => actions.save() }, "Save");
+  const saveButton = h("button", { class: "primary", title: "Download .json (Ctrl+S)", onclick: () => actions.save(), "data-guide": "save" }, "Save");
 
   name.addEventListener("change", () => editor.rename(name.value.trim() || "Untitled"));
   const applySize = () => {
@@ -885,22 +885,22 @@ export function buildTopBar(editor: Editor, actions: TopBarActions): HTMLElement
     h("div", { class: "brand" }, h("span", { class: "logo", "aria-hidden": "true" }, "◇"), h("span", {}, "Map Builder")),
     modes,
     name,
-    h("label", { class: "size-field" }, h("span", {}, "W"), width),
-    h("label", { class: "size-field" }, h("span", {}, "H"), height),
-    h("div", { class: "group" }, undo, redo),
+    h("label", { class: "size-field", "data-guide": "size" }, h("span", {}, "W"), width),
+    h("label", { class: "size-field", "data-guide": "size" }, h("span", {}, "H"), height),
+    h("div", { class: "group", "data-guide": "undo" }, undo, redo),
     h("div", { class: "spacer" }),
     h(
       "div",
       { class: "group" },
-      h("button", { class: "secondary", onclick: () => actions.newDocument() }, "New"),
-      h("button", { class: "secondary", title: "Open a .json file or a game map .yml (Ctrl+O)", onclick: () => actions.open() }, "Open"),
-      h("button", { class: "secondary", title: "Add another file of the same kind into this map (Ctrl+Shift+O)", onclick: () => actions.add() }, "Add"),
+      h("button", { class: "secondary", onclick: () => actions.newDocument(), "data-guide": "new" }, "New"),
+      h("button", { class: "secondary", title: "Open a .json file or a game map .yml (Ctrl+O)", onclick: () => actions.open(), "data-guide": "open" }, "Open"),
+      h("button", { class: "secondary", title: "Add another file of the same kind into this map (Ctrl+Shift+O)", onclick: () => actions.add(), "data-guide": "add" }, "Add"),
       saveButton
     ),
-    h("button", { class: "secondary", onclick: () => actions.showGame(), title: "Link the game server's data folder: export to the game and open what it saved" }, "Game"),
-    h("button", { class: "secondary", onclick: () => actions.showCodebase(), title: "Which game codebase the palette comes from (Qlippoth Station or another SS14 fork)" }, "Codebase"),
-    h("button", { class: "ghost", onclick: () => actions.showHelp(), title: "Shortcuts" }, "?"),
-    h("button", { class: "ghost", onclick: () => actions.showGuide(), title: "How to use the editor, step by step" }, "Guide"),
+    h("button", { class: "secondary", "data-guide": "game", onclick: () => actions.showGame(), title: "Link the game server's data folder: export to the game and open what it saved" }, "Game"),
+    h("button", { class: "secondary", "data-guide": "codebase", onclick: () => actions.showCodebase(), title: "Which game codebase the palette comes from (Qlippoth Station or another SS14 fork)" }, "Codebase"),
+    h("button", { class: "ghost", onclick: () => actions.showHelp(), title: "Shortcuts", "data-guide": "help" }, "?"),
+    h("button", { class: "ghost", onclick: () => actions.showGuide(), title: "How to use the editor, step by step", "data-guide": "guide" }, "Guide"),
     h("button", { class: "ghost", onclick: () => actions.showCredits() }, "Credits")
   );
 }

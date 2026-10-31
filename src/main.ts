@@ -16,8 +16,9 @@ import {
   type CustomCodebase,
 } from "./codebase/store";
 import type { WorkerMessage } from "./codebase/worker";
+import { diffCodebases, type DiffGroup } from "./codebase/diff";
 import { GameFolder, type FolderFile } from "./gamefolder";
-import { findItem, loadPalette, type Palette } from "./palette";
+import { findItem, loadCodebaseItems, loadPalette, type Palette } from "./palette";
 import { autosaveText, readAutosave } from "./autosave";
 import { exportStation, teleportTarget } from "./station/export";
 import { exportPackage } from "./station/gamemap";
@@ -28,6 +29,7 @@ import { RandomSetLibrary } from "./randomsets";
 import { exportProject, openProject, slug } from "./project";
 import { buildRightSidebar, buildSidebar, buildTopBar } from "./ui";
 import { MapView, isTyping } from "./view";
+import { key, openGuide, p, ui } from "./guide";
 
 const app = document.getElementById("app")!;
 
@@ -78,8 +80,8 @@ function start(palette: Palette, autosaves: Autosaves): void {
   void randomSets.load();
   editor.randomSets = randomSets;
   randomSets.subscribe(() => editor.emit("selection"));
-  const stage = h("section", { class: "stage" });
-  const status = h("footer", { class: "statusbar" });
+  const stage = h("section", { class: "stage", "data-guide": "stage" });
+  const status = h("footer", { class: "statusbar", "data-guide": "statusbar" });
   const dialog = h("dialog", { class: "dialog" });
 
   const view = new MapView(editor, stage);
@@ -92,7 +94,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
     stateText,
     h(
       "button",
-      { class: "commit ghost", title: "Game codebase and commit the palette was built from (change in Codebase)", onclick: () => showCodebaseDialog() },
+      { class: "commit ghost", "data-guide": "commit", title: "Game codebase and commit the palette was built from (change in Codebase)", onclick: () => showCodebaseDialog() },
       `${palette.codebase.name}${palette.gameCommit ? ` @ ${palette.gameCommit.slice(0, 8)}` : ""}`
     )
   );
@@ -414,6 +416,84 @@ function start(palette: Palette, autosaves: Autosaves): void {
       location.reload();
     };
 
+    /** Before switching: which objects the other codebase drops and adds, by the file they are defined in. */
+    const review = async (info: CodebaseInfo) => {
+      const id = info.id === DEFAULT_CODEBASE.id ? null : info.id;
+      worker?.terminate();
+      worker = null;
+      clear(body, h("p", { class: "muted" }, `Comparing ${palette.codebase.name} with ${info.name}…`));
+      const next = await loadCodebaseItems(id);
+      const back = h("button", { type: "button", class: "secondary", onclick: () => void render() }, "Back");
+      const go = h("button", { type: "button", class: "primary", onclick: () => void use(id) }, `Use ${info.name}`);
+      if (!next) {
+        clear(
+          body,
+          h("p", {}, `The palette of ${info.name} could not be read, so the changes cannot be listed. You can still switch to it.`),
+          h("footer", { class: "button-row end" }, back, go)
+        );
+        return;
+      }
+      const diff = diffCodebases(palette.items, next, [editor.doc]);
+      const files = (groups: DiffGroup[]) => {
+        const byFile = groups.every((group) => group.byFile);
+        return `${groups.length} ${byFile ? (groups.length === 1 ? "file" : "files") : groups.length === 1 ? "category" : "categories"}`;
+      };
+      const groupRow = (group: DiffGroup) =>
+        h(
+          "li",
+          {},
+          h(
+            "details",
+            {},
+            h("summary", {}, h("span", { class: group.byFile ? "diff-file" : "diff-category" }, group.label), h("span", { class: "diff-count" }, String(group.items.length))),
+            h(
+              "ul",
+              { class: "diff-items" },
+              ...group.items.slice(0, 60).map((item) => h("li", {}, item.name, h("span", { class: "muted" }, item.id))),
+              group.items.length > 60 ? h("li", { class: "muted" }, `and ${group.items.length - 60} more`) : null
+            )
+          )
+        );
+      const section = (kind: "removed" | "added", groups: DiffGroup[], count: number) => {
+        if (count === 0) return h("p", { class: "muted" }, kind === "removed" ? "Nothing is removed." : "Nothing is added.");
+        const shown = groups.slice(0, 12);
+        const rest = groups.slice(12);
+        return h(
+          "section",
+          { class: `diff-section ${kind}` },
+          h("h3", {}, kind === "removed" ? `Removed: ${count} objects from ${files(groups)}` : `Added: ${count} objects in ${files(groups)}`),
+          h("ul", { class: "diff-groups" }, ...shown.map(groupRow)),
+          rest.length
+            ? h(
+                "details",
+                { class: "diff-rest" },
+                h("summary", {}, `${rest.length} more with ${rest.reduce((sum, group) => sum + group.items.length, 0)} objects`),
+                h("ul", { class: "diff-groups" }, ...rest.map(groupRow))
+              )
+            : null
+        );
+      };
+      const noFiles = [...diff.removed, ...diff.added].some((group) => !group.byFile);
+      clear(
+        body,
+        h("p", { class: "diff-lead" }, `Switching from ${palette.codebase.name} to ${info.name} changes the palette like this:`),
+        h(
+          "div",
+          { class: "diff-totals" },
+          h("div", { class: "diff-total removed" }, h("span", { class: "diff-number" }, `−${diff.removedCount}`), h("span", {}, `objects removed${diff.removedCount ? ` from ${files(diff.removed)}` : ""}`)),
+          h("div", { class: "diff-total added" }, h("span", { class: "diff-number" }, `+${diff.addedCount}`), h("span", {}, `objects added${diff.addedCount ? ` in ${files(diff.added)}` : ""}`))
+        ),
+        diff.placedRemoved
+          ? h("p", { class: "warning error" }, `${diff.placedRemoved} objects placed in the open map are not in ${info.name}. Checks will list them, and the game will not load the map until they are replaced.`)
+          : null,
+        diff.renamed ? h("p", { class: "muted" }, `${diff.renamed} more ids are renamed in ${info.name}; maps that use them keep working.`) : null,
+        section("removed", diff.removed, diff.removedCount),
+        section("added", diff.added, diff.addedCount),
+        noFiles ? h("p", { class: "muted" }, "One of the palettes was built before files were recorded, so its objects are grouped by palette category.") : null,
+        h("footer", { class: "button-row end" }, back, go)
+      );
+    };
+
     const build = () => {
       const repository = parseRepository(link.value);
       if (!repository) {
@@ -476,7 +556,7 @@ function start(palette: Palette, autosaves: Autosaves): void {
             { class: "button-row" },
             info.id === current
               ? h("span", { class: "muted" }, "In use")
-              : h("button", { type: "button", class: "secondary", onclick: () => void use(info.id === DEFAULT_CODEBASE.id ? null : info.id) }, "Use"),
+              : h("button", { type: "button", class: "secondary", title: "See what changes, then switch", onclick: () => void review(info) }, "Use…"),
             extra
           )
         );
@@ -640,66 +720,184 @@ function start(palette: Palette, autosaves: Autosaves): void {
     void render();
   }
 
-  /** A short getting-started guide; docs/user-guide.md has the long one. */
+  /** The step-by-step guide over the editor; docs/user-guide.md has the long one. */
   function showGuideDialog() {
-    const step = (title: string, ...text: (Node | string)[]) => h("li", {}, h("strong", {}, title), " ", ...text);
-    const b = (text: string) => h("strong", {}, text);
-    const code = (text: string) => h("code", {}, text);
     const station = editor.mode === "station";
     const [x, y] = station ? teleportTarget(editor.doc) : [0, 0];
-    openDialog(
-      "Guide",
-      h(
-        "div",
-        { class: "guide" },
-        h("h3", {}, "Making a map"),
-        h(
-          "ol",
-          {},
-          step("Pick a mode.", "The top left buttons switch between ", b("Domain"), " (rift domains) and ", b("Station"), " (game maps). Each mode keeps its own map."),
-          step("Start a map.", b("New"), " makes an empty one; ", b("Open"), " opens a saved file or one of the game's own maps (", code("Resources/Maps/*.yml"), ")."),
-          step("Pick a layer and an item.", "Layers are on the left (keys ", b("1"), "–", b("4"), "): floor, structure (walls, doors), object. The palette on the right lists what each layer holds; ", b("/"), " searches it."),
-          step("Paint.", "Choose an action (", b("Brush"), ", ", b("Erase"), ", ", b("Select"), ") and a shape (", b("Single"), ", ", b("Rectangle"), ", ", b("Fill"), "). ", b("T"), " turns what you place, right click picks what is in a cell."),
-          step("Look at the checks.", "The ", b("Checks"), " list on the left shows problems; click one to jump to it. Switch a station to ", b("Exportable"), " before handing it in."),
-          step("Save.", b("Save"), " downloads the map (stations as a game ", code(".yml"), "). Work is also autosaved in this browser, but only a saved file is safe.")
-        ),
-        h("h3", {}, "Trying a station in the game"),
-        h(
-          "ol",
-          {},
-          step("Link the server folder.", b("Game"), " → ", b("Link folder…"), " and choose the server's data folder (for a server built from source: ", code("bin/Content.Server/data"), "). Chrome and Edge only; other browsers save the file and you copy it there."),
-          step("Export.", "Start the server, join it, and press ", b("Export station here"), "."),
-          step(
-            "Load it in the game.",
-            "Open the game's console (you need admin rights; on your own server you have them). The ",
-            b("Game"),
-            " window lists the commands with a Copy button: ",
-            code("loadmap"),
-            " loads the station as a new map, ",
-            code("mapinit"),
-            " starts it (a loaded map is paused and you cannot move on it), ",
-            code("tp"),
-            " takes you to the station."
+    const commands = (...rows: HTMLElement[]) => h("div", { class: "commands tour-commands" }, ...rows);
+    const note = (...parts: (Node | string)[]) => h("p", { class: "tour-note" }, ...parts);
+    const file = `/${fileName(station ? editor.doc.name : "your-station", "station")}`;
+    openGuide([
+      {
+        title: "Welcome to the Map Builder",
+        body: [
+          p("This guide walks you through the editor one part at a time. On each page the parts it talks about are circled on the screen, with an arrow pointing at them."),
+          p("Move between pages with the ", ui("Next"), " and ", ui("Back"), " buttons, or with the ", key("←"), " and ", key("→"), " keys. The dots at the bottom jump straight to a page."),
+          p("The guide closes from its last page."),
+        ],
+      },
+      {
+        title: "Domain or Station",
+        targets: ["modes"],
+        body: [
+          p("These two buttons switch what you are making."),
+          p(ui("Domain"), " is for rift domains: the maps players reach through the Q-Gate."),
+          p(ui("Station"), " is for the game's own station maps, saved as the game's map files."),
+          p("Each mode keeps its own map, so switching back and forth loses nothing."),
+        ],
+      },
+      {
+        title: "Starting a map",
+        targets: ["new", "open", "add"],
+        body: [
+          p(ui("New"), " makes an empty map. You choose its name and size."),
+          p(ui("Open"), " opens a file you saved before, or one of the game's own maps (", h("code", {}, "Resources/Maps/*.yml"), ")."),
+          p(ui("Add"), " brings another file of the same kind into the map that is open now, for example a room you saved on its own."),
+        ],
+      },
+      {
+        title: "Name, size and undo",
+        targets: ["name", "size", "undo"],
+        body: [
+          p("The text box holds the map's name. It becomes the file name when you save."),
+          p(ui("W"), " and ", ui("H"), " are the width and height in tiles. Making a map smaller cuts off what lies outside."),
+          p(ui("Undo"), " and ", ui("Redo"), " step back and forward through your changes (", key("Ctrl+Z"), " and ", key("Ctrl+Y"), ")."),
+        ],
+      },
+      {
+        title: "Layers",
+        targets: ["layers"],
+        body: [
+          p("A map is built from layers stacked on top of each other: floor at the bottom, then structures such as walls and doors, then objects."),
+          p("Click a layer to work on it, or press ", key("1"), " to ", key("4"), ". The eye in front of a layer hides it while you work."),
+          p("You only paint on the active layer, so walls never wipe out the floor underneath."),
+        ],
+      },
+      {
+        title: "The palette",
+        targets: ["palette-search", "palette-list"],
+        body: [
+          p("The palette on the right lists everything the active layer can hold. Click an item to paint with it."),
+          p("Type in the search box to find an item by name or id; ", key("/"), " jumps to it. The list next to it narrows the palette to one category."),
+          p("Some items are hidden in the game's spawn menu. They only show up when you search for them."),
+        ],
+      },
+      {
+        title: "Actions and shapes",
+        targets: ["tools"],
+        body: [
+          p("The action says what a click does: ", ui("Brush"), " paints, ", ui("Erase"), " clears, ", ui("Select"), " picks cells so you can move or delete them."),
+          p("The shape says how much a click covers: ", ui("Single"), " is one cell (drag for a line), ", ui("Rectangle"), " is a dragged box, ", ui("Fill"), " is the whole connected area."),
+          p(key("T"), " turns what you are about to place. A right click picks up whatever is in a cell, so you can paint more of it."),
+        ],
+      },
+      {
+        title: "Moving around the map",
+        targets: ["stage", "statusbar"],
+        body: [
+          p("The map takes the middle of the screen. Scroll the mouse wheel to zoom."),
+          p("To move the view, hold ", key("Space"), " and drag, or drag with the middle mouse button. ", key("0"), " fits the whole map on screen."),
+          p("The bar at the bottom shows the cell under the mouse and what it holds."),
+        ],
+      },
+      {
+        title: "Checks",
+        targets: ["checks"],
+        body: [
+          p("The checks list problems in the map. Click one to jump to the place it is about."),
+          p("Red lines are critical: the map will not load or cannot be played until they are fixed. Yellow lines are warnings worth a look."),
+          p(
+            "Stations have two profiles here. ",
+            ui("Draft"),
+            " runs only the basic checks, for quick work and testing. ",
+            ui("Exportable"),
+            " runs every check a playable station needs and adds the ",
+            ui("Export package"),
+            " button."
           ),
-          step("Bring changes back.", code("savemap"), " writes the map into the folder; ", b("Open"), " it from the ", b("Game"), " window.")
-        ),
-        h("h3", {}, "Problems in the game"),
-        h("p", { class: "muted" }, "10 below is the map number used with loadmap; change it if you used another."),
-        h(
-          "div",
-          { class: "commands" },
-          h("p", {}, b("I only see space after tp."), " The station is not always around 0 0; go to it:"),
-          station
-            ? command(`tp ${x} ${y} 10`, "the station open now: its observer spawn point, else the floor nearest its middle")
-            : h("p", { class: "muted" }, "Open the station in Station mode to see its tp command here (it is also in the Game window)."),
-          h("p", {}, b("I cannot move."), " A loaded map is paused until it is started:"),
-          command("mapinit 10", "starts the map; save it afterwards with savemap 10 /your-station.yml true"),
-          h("p", {}, b("Everything is black."), " The station has no lights yet. Turn lighting off on your screen:"),
-          command("togglelight", "run it again to turn lighting back on")
-        ),
-        h("p", { class: "muted" }, "Press ", b("?"), " for all keyboard shortcuts. The full user guide is docs/user-guide.md in the editor's repository.")
-      )
-    );
+        ],
+      },
+      {
+        title: "Modules and random rooms",
+        targets: ["tabs"],
+        body: [
+          p("The tabs above the palette open two more panels."),
+          p(ui("Modules"), " is your library of saved pieces: select part of a map, save it as a module and place it again in any map. Placed copies can be updated when the module changes."),
+          p(ui("Random"), " holds random sets: one of several items, or one of several rooms, is chosen each time the map is used."),
+        ],
+      },
+      {
+        title: "Saving your work",
+        targets: ["save"],
+        body: [
+          p(ui("Save"), " downloads the map as a file (", key("Ctrl+S"), "). Stations are saved as a game map ", h("code", {}, ".yml"), "."),
+          p("A dot on the button means there are unsaved changes."),
+          p("Your work is also kept in this browser between visits, but only a saved file is really safe. Save often."),
+        ],
+      },
+      {
+        title: "Trying a station in the game",
+        targets: ["game"],
+        body: [
+          p("The ", ui("Game"), " window connects the editor to a game server running on your computer."),
+          p(
+            "Press ",
+            ui("Link folder…"),
+            " there and choose the server's data folder. For a server built from source it is ",
+            h("code", {}, "bin/Content.Server/data"),
+            ". This works in Chrome and Edge; other browsers save the file and you copy it into that folder yourself."
+          ),
+          p("Then start the server, join it, and press ", ui("Export station here"), "."),
+        ],
+      },
+      {
+        title: "Loading it in the game",
+        targets: ["game"],
+        body: [
+          p("Open the game's console. You need admin rights, which you have on your own server. The ", ui("Game"), " window lists these commands with a Copy button:"),
+          commands(
+            command(`loadmap 10 ${file}`, "loads the station as a new map"),
+            command("mapinit 10", "starts the map; a loaded map is paused"),
+            command(station ? `tp ${x} ${y} 10` : "tp <x> <y> 10", "takes you to the station"),
+            command(`savemap 10 ${file} true`, "writes your in-game changes back")
+          ),
+          note("10 is the map number. Use another one if 10 is taken. After savemap, open the file again from the Game window."),
+        ],
+      },
+      {
+        title: "Problems in the game",
+        body: [
+          p("Only space after tp? The station is not always around 0, 0. Go to it with:"),
+          commands(
+            station
+              ? command(`tp ${x} ${y} 10`, "the open station's observer spawn point, else the floor nearest its middle")
+              : command("tp <x> <y> 10", "open the station in Station mode to see its numbers here")
+          ),
+          p("Cannot move? A loaded map is paused until it is started:"),
+          commands(command("mapinit 10", "starts the map")),
+          p("Everything black? The station has no lights yet. Turn lighting off on your screen:"),
+          commands(command("togglelight", "run it again to turn lighting back on")),
+        ],
+      },
+      {
+        title: "Another game codebase",
+        targets: ["codebase", "commit"],
+        body: [
+          p("The palette's names and sprites come from one game codebase: Qlippoth Station by default."),
+          p(ui("Codebase"), " switches to another SS14 fork, or builds the palette of any public fork from its GitHub link. The name at the bottom right shows the codebase in use."),
+          p("Before switching, a summary lists the objects the other codebase removes and adds, file by file, so you know what your maps will miss."),
+        ],
+      },
+      {
+        title: "You are ready",
+        targets: ["help", "guide"],
+        body: [
+          p("The ", ui("?"), " button lists every keyboard shortcut."),
+          p("The ", ui("Guide"), " button opens this guide again whenever you need it."),
+          p("The full user guide, with more detail on every part, is docs/user-guide.md in the editor's repository."),
+        ],
+      },
+    ]);
   }
 
   async function showCreditsDialog() {

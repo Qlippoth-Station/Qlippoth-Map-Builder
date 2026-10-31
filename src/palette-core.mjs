@@ -73,9 +73,15 @@ export async function buildPalette(source, YAML, progress = () => {}) {
 
   // ---- Tiles ----
   const tileProtos = new Map();
+  // Prototype file each tile is defined in (relative to Prototypes/), shown when codebases are compared.
+  const tileFiles = new Map();
   for (const { path, docs } of documents) {
     if (!path.startsWith("Prototypes/Tiles/")) continue;
-    for (const proto of docs) if (proto?.type === "tile" && proto.id) tileProtos.set(proto.id, proto);
+    for (const proto of docs) {
+      if (proto?.type !== "tile" || !proto.id) continue;
+      tileProtos.set(proto.id, proto);
+      tileFiles.set(proto.id, path.slice("Prototypes/".length));
+    }
   }
   const resolveTile = (id, seen = new Set()) => {
     const proto = tileProtos.get(id);
@@ -102,6 +108,7 @@ export async function buildPalette(source, YAML, progress = () => {}) {
       name: locale.get(tile.name) ?? tile.name ?? id,
       layer: "floor",
       category: tile.isSubfloor ? "Subfloor" : "Floor",
+      file: tileFiles.get(id),
       image,
       // Number of sprite variants; new tiles in exported maps get one of them, like the game does.
       flags: Number(tile.variants) > 1 ? { variants: Number(tile.variants) } : undefined,
@@ -194,6 +201,8 @@ export async function buildPalette(source, YAML, progress = () => {}) {
       name: resolved.suffix ? `${name} (${resolved.suffix})` : name,
       layer: entityLayer(id, components, tags, resolved.ancestors),
       category: displayCategory(relative),
+      // Prototype file it is defined in (relative to Prototypes/), shown when codebases are compared.
+      file: relative,
       ...(icon ?? {}),
       flags: compact({
         hidden: categories.some((category) => categoryInfo[category]?.hide) || undefined,
