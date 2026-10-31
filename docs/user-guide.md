@@ -34,7 +34,7 @@ Everything happens in your browser. Nothing is uploaded; your work stays on your
 
 | Where | What is there |
 |---|---|
-| **Top bar** | Mode switch, the map's name and size, **New**, **Open**, **Add**, **Save**, **Undo**/**Redo**, **Game**, **Codebase**, **?** (shortcuts), **Guide** (a short version of this guide), **Credits** |
+| **Top bar** | Mode switch, the map's name and size, **New**, **Open**, **Add**, **Save**, **Undo**/**Redo**, **Game**, **Codebase**, **?** (shortcuts), **Guide** (a step-by-step tour of the screen), **Credits** |
 | **Left side** | **Tools** (what the mouse does), **Layers**, **View** options and the **Checks** list (problems in the map) |
 | **Middle** | The map |
 | **Right side** | Three tabs: **Palette** (things to paint with), **Modules** (saved map parts), **Random** (random choices) |
@@ -283,6 +283,12 @@ To make the station part of the game, so it can be voted for and played in norma
 
 If the station uses random rooms (from the **Random** tab), the package also has the rooms and explains them in
 `README.txt`.
+
+## Using another game codebase
+
+The palette's names and pictures come from one game codebase, Qlippoth Station by default. **Codebase** in the top bar lists the codebases served with the editor and lets you build the palette of any public SS14 fork from its GitHub link.
+
+Press **Use…** next to a codebase to see what changes before you switch: how many objects it removes and adds, listed by the prototype file they are defined in (click a file to see its objects). It also warns when objects placed in the open map would be missing in the other codebase. **Use** switches; **Back** keeps the current one.
 
 ## Common problems
 

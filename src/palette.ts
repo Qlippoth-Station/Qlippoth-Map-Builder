@@ -25,6 +25,8 @@ export interface PaletteItem {
   name: string;
   layer: LayerId;
   category: string;
+  /** Prototype file it is defined in, relative to Resources/Prototypes (palettes built before this was kept lack it). */
+  file?: string;
   /** Index into the atlas, or null: markers are drawn from color + glyph, entities without a sprite as a placeholder. */
   icon: number | null;
   color?: string;
@@ -153,4 +155,22 @@ export function itemNotes(item: PaletteItem): string[] {
 
 export function iconOrigin(palette: Palette, icon: number): [number, number] {
   return [(icon % palette.atlasColumns) * palette.iconSize, Math.floor(icon / palette.atlasColumns) * palette.iconSize];
+}
+
+/** The items and renames of a codebase's palette, without its sprites: enough to compare two codebases. */
+export async function loadCodebaseItems(id: string | null): Promise<{ items: PaletteItem[]; migrations: Map<string, string | null> } | null> {
+  type Data = { items: PaletteItem[]; migrations?: Record<string, string | null> };
+  const read = (data: Data) => ({ items: data.items, migrations: new Map(Object.entries(data.migrations ?? {})) });
+  try {
+    if (id && id !== DEFAULT_CODEBASE.id) {
+      const custom = (await customCodebases()).find((codebase) => codebase.id === id);
+      if (custom) return read(custom.palette as unknown as Data);
+    }
+    const registered = await registeredCodebases();
+    const info = id ? registered.find((codebase) => codebase.id === id) : registered.find((codebase) => codebase.default);
+    const response = await fetch(`${info?.path ?? BASE}palette.json`);
+    return response.ok ? read((await response.json()) as Data) : null;
+  } catch {
+    return null;
+  }
 }
